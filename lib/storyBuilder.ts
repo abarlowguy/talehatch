@@ -8,6 +8,7 @@ export interface GenerateRequest {
   questionCount?: number;
   chapterNumber?: number;
   previousCliffhanger?: string;
+  conversationHistory?: Array<{ prompt: string; answer: string }>;
 }
 
 export interface GenerateResponse {

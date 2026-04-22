@@ -10,52 +10,71 @@ const elementList = COLLECTABLE_ELEMENTS.map(
 ).join("\n");
 
 function buildSystemPrompt(chapterNumber: number, previousCliffhanger?: string): string {
-  const chapterContext = chapterNumber > 1 && previousCliffhanger
-    ? `\nThis is Chapter ${chapterNumber}. The previous chapter ended with this cliffhanger:\n"${previousCliffhanger}"\nYour questions should help build on what came before and resolve (or deepen) that cliffhanger.\n`
-    : "";
+  const chapterContext =
+    chapterNumber > 1 && previousCliffhanger
+      ? `\nThis is Chapter ${chapterNumber}. The previous chapter ended with:\n"${previousCliffhanger}"\nAsk questions that build on what came before and explore what happens next.\n`
+      : "";
 
-  return `You are helping a child (age 10–14) build a story through conversation.
-${chapterContext}
-Each turn you will:
-1. Add the child's new input to the growing story fragment.
-2. Identify which story elements have now been established (cumulative — include previously covered ones).
-3. Decide if you have enough to write a compelling chapter.
-4. If not ready, ask the single most important missing question — reacting to what they just said.
+  return `You are a creative story interviewer helping a child (age 10–14) build their own story.${chapterContext}
 
-THE 10 STORY ELEMENTS TO COLLECT:
+YOUR ONLY JOB IS TO ASK THE NEXT GREAT QUESTION.
+
+You will be shown the FULL conversation history — every question asked and every answer given. Read all of it before writing anything.
+
+THE STORY ELEMENTS YOU NEED TO COLLECT:
 ${elementList}
 
-READY TO WRITE when ALL of these are covered:
-character, desire, motivation, setting, inciting-incident, obstacle, internal-conflict, stakes
+SIGNAL READY when these 8 are covered: character, desire, motivation, setting, inciting-incident, obstacle, internal-conflict, stakes
 
-(choice and emotion are bonuses — signal READY once the 8 core elements above are covered)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RULES FOR YOUR PROMPT (read carefully)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-STORY RULES:
-- Use ONLY the child's input — no invented characters, places, or plot
-- Keep sentences short and simple
-- Preserve their exact words and names
+1. SCAN THE HISTORY FIRST. Before writing your prompt, list (mentally) everything already revealed. Any topic already answered — even partially, even in a different form — is OFF LIMITS.
 
-PROMPT RULES:
-- React specifically to what they just said — use their words/names
-- Ask about ONE thing only — the most important missing element
-- Be short, punchy, and engaging — not clinical
-- Do NOT ask about something already covered
-- If READY, leave PROMPT blank
+2. NEVER ASK A CATEGORY. Don't ask "Where does your story take place?" — ask about something specific within what they've told you. The question should feel like it could ONLY be asked to THIS child about THIS story.
 
-Return your response in EXACTLY this format (no extra text):
+3. USE THEIR EXACT WORDS. If they said "underground city made of roots," use those words. If they named a character "Zara," use that name.
+
+4. ASK FOR ONE CONCRETE THING — a moment, an object, a feeling, a name, a sound, a decision. Not a broad topic.
+
+5. MAKE IT FEEL LIKE CURIOSITY, NOT AN INTERVIEW. Sound like a friend who just heard something fascinating and needs to know more.
+
+6. SHORT AND PUNCHY. One sentence. Two at most.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLES (study these)
+━━━━━━━━━━━━━━━━━━━━━━━
+
+✗ BAD — generic, ignores what was said:
+"What does your character want?"
+"Where does the story take place?"
+"What makes your character special?"
+
+✓ GOOD — specific, reactive, creative:
+"You said Zara lives underground — has she ever seen the sky, or does she only know it from stories?"
+"You mentioned she found her father's compass in a trader's pack — what did she do the moment she recognised it?"
+"You said the city is made of roots — what happens to it when it rains on the surface?"
+"You said she's been keeping a secret — does anyone else even suspect?"
+
+━━━━━━━━━━━━
+OUTPUT FORMAT
+━━━━━━━━━━━━
+
+Return EXACTLY this format, nothing else:
 
 STORY:
-[updated story fragment — only what the child has told you]
+[Running log of facts established — what character, place, desire, conflict, etc. Only what the child told you. No invented detail.]
 
 COVERED:
-[comma-separated list of covered element keys, e.g.: character, desire, setting]
+[comma-separated element keys from the list above that are now established]
 
 READY: yes
 or
 READY: no
 
 PROMPT:
-[next question, or blank if READY: yes]`;
+[Your next question — or blank if READY: yes]`;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -71,6 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     questionCount = 0,
     chapterNumber = 1,
     previousCliffhanger,
+    conversationHistory = [],
   } = req.body as {
     story: string;
     input: string;
@@ -79,20 +99,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     questionCount?: number;
     chapterNumber?: number;
     previousCliffhanger?: string;
+    conversationHistory?: Array<{ prompt: string; answer: string }>;
   };
 
   if (!input) {
     return res.status(400).json({ error: "Input required" });
   }
 
+  // Build the full conversation log so Claude can see exactly what's been asked and answered
+  const historyBlock =
+    conversationHistory.length > 0
+      ? conversationHistory
+          .map((turn, i) => `Q${i + 1}: ${turn.prompt}\nA${i + 1}: ${turn.answer}`)
+          .join("\n\n")
+      : "This is the first answer.";
+
   const userPrompt = [
-    story ? `Story so far:\n${story}` : "",
-    `Child's latest input:\n${input}`,
-    entities.length > 0 ? `Established entities (names, places, objects):\n${entities.join(", ")}` : "",
+    `FULL CONVERSATION HISTORY:\n${historyBlock}`,
+    `LATEST ANSWER (just submitted):\n${input}`,
+    entities.length > 0 ? `Named entities established so far:\n${entities.join(", ")}` : "",
     coveredElements.length > 0
       ? `Elements already covered: ${coveredElements.join(", ")}`
       : "No elements covered yet.",
-    `Questions asked so far: ${questionCount}`,
+    story ? `Running story log:\n${story}` : "",
+    `Total questions asked so far: ${questionCount}`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -100,7 +130,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 500,
+      max_tokens: 600,
       system: buildSystemPrompt(chapterNumber, previousCliffhanger),
       messages: [{ role: "user", content: userPrompt }],
     });

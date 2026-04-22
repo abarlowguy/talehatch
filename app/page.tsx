@@ -70,9 +70,10 @@ export default function Home() {
   const [currentPrompt, setCurrentPrompt] = useState(FIRST_PROMPT);
   const [buildingStatus, setBuildingStatus] = useState("Hatching your chapter…");
 
-  // Edit mode UI state
-  const [isEditing, setIsEditing] = useState(false);
+  // Edit mode UI state — "idle" | "choose" | "prompt" | "direct"
+  const [editMode, setEditMode] = useState<"idle" | "choose" | "prompt" | "direct">("idle");
   const [editText, setEditText] = useState("");
+  const [directText, setDirectText] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -131,8 +132,7 @@ export default function Home() {
         cliffhanger: result.cliffhanger,
         imageUrl: result.imageUrl,
       }));
-      setIsEditing(false);
-      setEditText("");
+      resetEditState();
     });
 
     return () => clearInterval(interval);
@@ -157,6 +157,12 @@ export default function Home() {
         ? state.savedChapters[state.savedChapters.length - 1].cliffhanger
         : undefined;
 
+    // Build full Q&A history so Claude can see exactly what's been asked and answered
+    const conversationHistory = state.promptHistory.map((prompt, i) => ({
+      prompt,
+      answer: state.inputs[i] ?? "",
+    }));
+
     const result = await generateStorySegment({
       story: state.story,
       input,
@@ -167,6 +173,7 @@ export default function Home() {
       questionCount: state.step,
       chapterNumber: state.chapterNumber,
       previousCliffhanger,
+      conversationHistory,
     });
 
     const newStory = result.story ?? state.story;
@@ -195,7 +202,25 @@ export default function Home() {
     setIsLoading(false);
   }
 
-  async function handleApplyEdits() {
+  function resetEditState() {
+    setEditMode("idle");
+    setEditText("");
+    setDirectText("");
+    setEditError("");
+  }
+
+  function handleOpenDirectEdit() {
+    setDirectText(state.chapter);
+    setEditMode("direct");
+  }
+
+  function handleSaveDirectEdit() {
+    if (!directText.trim()) return;
+    setState((s) => ({ ...s, chapter: directText.trim() }));
+    resetEditState();
+  }
+
+  async function handleApplyPromptEdits() {
     if (!editText.trim()) return;
     setEditLoading(true);
     setEditError("");
@@ -210,8 +235,7 @@ export default function Home() {
       setEditError(result.error);
     } else {
       setState((s) => ({ ...s, chapter: result.chapter }));
-      setIsEditing(false);
-      setEditText("");
+      resetEditState();
     }
     setEditLoading(false);
   }
@@ -235,15 +259,13 @@ export default function Home() {
     }));
 
     setCurrentPrompt(NEXT_CHAPTER_FIRST_PROMPT);
-    setIsEditing(false);
-    setEditText("");
+    resetEditState();
   }
 
   function handleRestart() {
     setState(INITIAL_STATE);
     setCurrentPrompt(FIRST_PROMPT);
-    setIsEditing(false);
-    setEditText("");
+    resetEditState();
   }
 
   // ── BUILDING ──────────────────────────────────────────────────
@@ -309,15 +331,15 @@ export default function Home() {
             <AuthorInput onSubmit={(author) => setState((s) => ({ ...s, author }))} />
           )}
 
-          {/* Decision: edit or next chapter */}
-          {!isEditing ? (
+          {/* Decision / edit panel */}
+          {editMode === "idle" && (
             <div className="space-y-3">
               <p className="text-center text-sm font-medium text-slate-500">
                 What would you like to do?
               </p>
               <div className="flex gap-3">
                 <button
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => setEditMode("choose")}
                   className="flex-1 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium hover:border-amber-300 hover:bg-amber-50 transition"
                 >
                   ✏️ Edit this chapter
@@ -330,7 +352,41 @@ export default function Home() {
                 </button>
               </div>
             </div>
-          ) : (
+          )}
+
+          {editMode === "choose" && (
+            <div className="space-y-3">
+              <p className="text-center text-sm font-medium text-slate-500">
+                How would you like to edit?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setEditMode("prompt")}
+                  className="flex-1 py-4 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium hover:border-amber-300 hover:bg-amber-50 transition text-sm"
+                >
+                  <span className="block text-xl mb-1">💬</span>
+                  Describe changes
+                  <span className="block text-xs text-slate-400 mt-0.5">AI rewrites it for you</span>
+                </button>
+                <button
+                  onClick={handleOpenDirectEdit}
+                  className="flex-1 py-4 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium hover:border-amber-300 hover:bg-amber-50 transition text-sm"
+                >
+                  <span className="block text-xl mb-1">📝</span>
+                  Edit directly
+                  <span className="block text-xs text-slate-400 mt-0.5">Change the text yourself</span>
+                </button>
+              </div>
+              <button
+                onClick={resetEditState}
+                className="w-full py-2 text-sm text-slate-400 hover:text-slate-600 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {editMode === "prompt" && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-slate-700">
                 What changes would you like to make?
@@ -341,26 +397,54 @@ export default function Home() {
                 onChange={(e) => setEditText(e.target.value)}
                 disabled={editLoading}
                 rows={4}
-                placeholder={'Describe your edits… e.g. "Make the ending more dramatic" or "Change her name to Zara"'}
+                placeholder={'e.g. "Make the cliffhanger more intense" or "Change her name to Zara"'}
                 className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-50"
               />
-              {editError && (
-                <p className="text-sm text-rose-500">{editError}</p>
-              )}
+              {editError && <p className="text-sm text-rose-500">{editError}</p>}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setIsEditing(false); setEditText(""); setEditError(""); }}
+                  onClick={resetEditState}
                   disabled={editLoading}
                   className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:border-slate-300 transition disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleApplyEdits}
+                  onClick={handleApplyPromptEdits}
                   disabled={editLoading || !editText.trim()}
                   className="flex-1 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-semibold transition disabled:opacity-50"
                 >
                   {editLoading ? "Rewriting…" : "Apply edits"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {editMode === "direct" && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-slate-700">
+                Edit the chapter directly, then save when you're done.
+              </p>
+              <textarea
+                autoFocus
+                value={directText}
+                onChange={(e) => setDirectText(e.target.value)}
+                rows={20}
+                className="w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-serif leading-relaxed text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={resetEditState}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:border-slate-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveDirectEdit}
+                  disabled={!directText.trim()}
+                  className="flex-1 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-semibold transition disabled:opacity-50"
+                >
+                  Save changes
                 </button>
               </div>
             </div>
