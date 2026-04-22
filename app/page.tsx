@@ -1,65 +1,465 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
+import AnswerLog from "@/components/AnswerLog";
+import PromptBox from "@/components/PromptBox";
+import InputBar from "@/components/InputBar";
+import ContributionMeter from "@/components/ContributionMeter";
+import {
+  MIN_QUESTIONS,
+  MAX_QUESTIONS,
+  TOTAL_COLLECTABLE,
+  FIRST_PROMPT,
+  NEXT_CHAPTER_FIRST_PROMPT,
+  guidedPrompts,
+} from "@/lib/prompts";
+import { suggestions } from "@/lib/suggestions";
+import { extractNouns, mergeEntities } from "@/lib/entityExtractor";
+import {
+  generateStorySegment,
+  generateChapter,
+  editChapter,
+  type ChapterRecord,
+} from "@/lib/storyBuilder";
+
+type Mode = "guided" | "building" | "chapter";
+
+interface AppState {
+  chapterNumber: number;
+  mode: Mode;
+  step: number;
+  inputs: string[];
+  promptHistory: string[];
+  story: string;
+  entities: string[];
+  coveredElements: string[];
+  // Current chapter
+  chapterTitle: string;
+  chapter: string;
+  cliffhanger: string;
+  imageUrl: string;
+  // Across chapters
+  author: string;
+  savedChapters: ChapterRecord[];
+}
+
+const INITIAL_STATE: AppState = {
+  chapterNumber: 1,
+  mode: "guided",
+  step: 0,
+  inputs: [],
+  promptHistory: [],
+  story: "",
+  entities: [],
+  coveredElements: [],
+  chapterTitle: "",
+  chapter: "",
+  cliffhanger: "",
+  imageUrl: "",
+  author: "",
+  savedChapters: [],
+};
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+  const [state, setState] = useState<AppState>(INITIAL_STATE);
+  const [isLoading, setIsLoading] = useState(false);
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const [ideasHighlighted, setIdeasHighlighted] = useState(false);
+  const [suggestionText, setSuggestionText] = useState("");
+  const [currentPrompt, setCurrentPrompt] = useState(FIRST_PROMPT);
+  const [buildingStatus, setBuildingStatus] = useState("Hatching your chapter…");
+
+  // Edit mode UI state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    setIdeasHighlighted(false);
+    inactivityTimer.current = setTimeout(() => setIdeasHighlighted(true), 5000);
+  }, []);
+
+  useEffect(() => {
+    resetInactivityTimer();
+    return () => { if (inactivityTimer.current) clearTimeout(inactivityTimer.current); };
+  }, [state.step, resetInactivityTimer]);
+
+  // Trigger chapter generation when entering "building" mode
+  useEffect(() => {
+    if (state.mode !== "building") return;
+
+    const statuses = [
+      "Hatching your chapter…",
+      "Weaving your ideas together…",
+      "Painting the world you built…",
+      "Almost ready…",
+    ];
+    let i = 0;
+    const interval = setInterval(() => {
+      i = (i + 1) % statuses.length;
+      setBuildingStatus(statuses[i]);
+    }, 3500);
+
+    // Find the previous chapter's cliffhanger if this is chapter 2+
+    const previousCliffhanger =
+      state.savedChapters.length > 0
+        ? state.savedChapters[state.savedChapters.length - 1].cliffhanger
+        : undefined;
+
+    generateChapter({
+      inputs: state.inputs,
+      story: state.story,
+      entities: state.entities,
+      chapterNumber: state.chapterNumber,
+      previousCliffhanger,
+    }).then((result) => {
+      clearInterval(interval);
+      if (result.error) {
+        setBuildingStatus("Something went wrong. Refresh to try again.");
+        return;
+      }
+      setState((s) => ({
+        ...s,
+        mode: "chapter",
+        chapterTitle: result.chapterTitle,
+        chapter: result.chapter,
+        cliffhanger: result.cliffhanger,
+        imageUrl: result.imageUrl,
+      }));
+      setIsEditing(false);
+      setEditText("");
+    });
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.mode]);
+
+  async function handleGuidedInput(input: string) {
+    setIsLoading(true);
+    setIdeasOpen(false);
+    setSuggestionText("");
+    resetInactivityTimer();
+
+    const answeredPrompt = currentPrompt;
+    const newEntities = mergeEntities(state.entities, extractNouns(input));
+    const newInputs = [...state.inputs, input];
+    const newPromptHistory = [...state.promptHistory, answeredPrompt];
+    const nextStep = state.step + 1;
+
+    // Find previous cliffhanger for chapter 2+
+    const previousCliffhanger =
+      state.savedChapters.length > 0
+        ? state.savedChapters[state.savedChapters.length - 1].cliffhanger
+        : undefined;
+
+    const result = await generateStorySegment({
+      story: state.story,
+      input,
+      entities: newEntities,
+      mode: "guided",
+      step: state.step,
+      coveredElements: state.coveredElements,
+      questionCount: state.step,
+      chapterNumber: state.chapterNumber,
+      previousCliffhanger,
+    });
+
+    const newStory = result.story ?? state.story;
+    const newCovered = result.coveredElements ?? state.coveredElements;
+
+    if (result.nextPrompt) {
+      setCurrentPrompt(result.nextPrompt);
+    } else {
+      setCurrentPrompt(guidedPrompts[nextStep] ?? guidedPrompts[guidedPrompts.length - 1]);
+    }
+
+    const shouldBuild =
+      (result.readyToWrite && nextStep >= MIN_QUESTIONS) || nextStep >= MAX_QUESTIONS;
+
+    setState((s) => ({
+      ...s,
+      step: nextStep,
+      mode: shouldBuild ? "building" : "guided",
+      inputs: newInputs,
+      promptHistory: newPromptHistory,
+      story: newStory,
+      entities: newEntities,
+      coveredElements: newCovered,
+    }));
+
+    setIsLoading(false);
+  }
+
+  async function handleApplyEdits() {
+    if (!editText.trim()) return;
+    setEditLoading(true);
+    setEditError("");
+
+    const result = await editChapter({
+      chapter: state.chapter,
+      editInstructions: editText.trim(),
+      cliffhanger: state.cliffhanger,
+    });
+
+    if (result.error) {
+      setEditError(result.error);
+    } else {
+      setState((s) => ({ ...s, chapter: result.chapter }));
+      setIsEditing(false);
+      setEditText("");
+    }
+    setEditLoading(false);
+  }
+
+  function handleStartNextChapter() {
+    // Save current chapter
+    const saved: ChapterRecord = {
+      chapterNumber: state.chapterNumber,
+      title: state.chapterTitle,
+      chapter: state.chapter,
+      imageUrl: state.imageUrl,
+      cliffhanger: state.cliffhanger,
+    };
+
+    setState((s) => ({
+      ...INITIAL_STATE,
+      chapterNumber: s.chapterNumber + 1,
+      author: s.author,
+      entities: s.entities, // carry established characters/places
+      savedChapters: [...s.savedChapters, saved],
+    }));
+
+    setCurrentPrompt(NEXT_CHAPTER_FIRST_PROMPT);
+    setIsEditing(false);
+    setEditText("");
+  }
+
+  function handleRestart() {
+    setState(INITIAL_STATE);
+    setCurrentPrompt(FIRST_PROMPT);
+    setIsEditing(false);
+    setEditText("");
+  }
+
+  // ── BUILDING ──────────────────────────────────────────────────
+  if (state.mode === "building") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 gap-6 p-6">
+        <div className="flex gap-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="w-3 h-3 rounded-full bg-amber-400 animate-bounce"
+              style={{ animationDelay: `${i * 150}ms` }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          ))}
         </div>
-      </main>
+        <p className="text-2xl font-bold text-white text-center">{buildingStatus}</p>
+        <p className="text-slate-400 text-sm text-center max-w-xs">
+          Writing Chapter {state.chapterNumber} from {state.inputs.length} of your ideas.
+        </p>
+      </div>
+    );
+  }
+
+  // ── CHAPTER ───────────────────────────────────────────────────
+  if (state.mode === "chapter") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
+        <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
+
+          {/* Image */}
+          {state.imageUrl && (
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-lg bg-slate-200">
+              <Image
+                src={state.imageUrl}
+                alt="Chapter illustration"
+                fill
+                className="object-cover"
+                unoptimized
+              />
+            </div>
+          )}
+
+          {/* Title */}
+          <div className="text-center space-y-1">
+            <p className="text-xs font-semibold text-amber-600 tracking-widest uppercase">
+              Chapter {state.chapterNumber}
+            </p>
+            <h1 className="text-3xl font-bold text-slate-800">{state.chapterTitle}</h1>
+            {state.author && (
+              <p className="text-slate-500 text-sm">by {state.author}</p>
+            )}
+          </div>
+
+          {/* Chapter text */}
+          <div className="bg-white rounded-2xl shadow p-8">
+            <p className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">
+              {state.chapter}
+            </p>
+          </div>
+
+          {/* Author input (if not yet set) */}
+          {!state.author && (
+            <AuthorInput onSubmit={(author) => setState((s) => ({ ...s, author }))} />
+          )}
+
+          {/* Decision: edit or next chapter */}
+          {!isEditing ? (
+            <div className="space-y-3">
+              <p className="text-center text-sm font-medium text-slate-500">
+                What would you like to do?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium hover:border-amber-300 hover:bg-amber-50 transition"
+                >
+                  ✏️ Edit this chapter
+                </button>
+                <button
+                  onClick={handleStartNextChapter}
+                  className="flex-1 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-semibold transition"
+                >
+                  📖 Write Chapter {state.chapterNumber + 1}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-slate-700">
+                What changes would you like to make?
+              </p>
+              <textarea
+                autoFocus
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                disabled={editLoading}
+                rows={4}
+                placeholder={'Describe your edits… e.g. "Make the ending more dramatic" or "Change her name to Zara"'}
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-50"
+              />
+              {editError && (
+                <p className="text-sm text-rose-500">{editError}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setIsEditing(false); setEditText(""); setEditError(""); }}
+                  disabled={editLoading}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-500 font-medium hover:border-slate-300 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleApplyEdits}
+                  disabled={editLoading || !editText.trim()}
+                  className="flex-1 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-semibold transition disabled:opacity-50"
+                >
+                  {editLoading ? "Rewriting…" : "Apply edits"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="flex items-center justify-between text-sm px-1 pb-4">
+            <p className="text-amber-600 font-medium">
+              ✨ {state.inputs.length} ideas, all yours
+            </p>
+            <button
+              onClick={handleRestart}
+              className="text-slate-400 hover:text-slate-600 underline"
+            >
+              Start a new story
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── GUIDED ───────────────────────────────────────────────────
+  const currentSuggestions = suggestions[state.step] ?? [];
+  const answerEntries = state.promptHistory.map((prompt, i) => ({
+    prompt,
+    answer: state.inputs[i] ?? "",
+  }));
+
+  return (
+    <div className="min-h-screen flex flex-col p-4 gap-4 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between pt-2">
+        <div>
+          <p className="text-2xl font-bold text-slate-800 tracking-tight">Talehatch</p>
+          {state.chapterNumber > 1 && (
+            <p className="text-xs text-amber-500 font-medium">Building Chapter {state.chapterNumber}</p>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 font-medium">Where your stories hatch.</p>
+      </div>
+
+      <AnswerLog entries={answerEntries} isLoading={isLoading} />
+
+      <PromptBox
+        prompt={currentPrompt}
+        coveredCount={state.coveredElements.length}
+        totalCount={TOTAL_COLLECTABLE}
+      />
+
+      {ideasOpen && currentSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-1">
+          {currentSuggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => { setSuggestionText(s); setIdeasOpen(false); }}
+              className="px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 hover:bg-amber-100 transition"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <InputBar
+        onSubmit={handleGuidedInput}
+        onNeedIdeas={() => setIdeasOpen(!ideasOpen)}
+        isLoading={isLoading}
+        showIdeasButton={currentSuggestions.length > 0}
+        ideasHighlighted={ideasHighlighted}
+        injectedText={suggestionText}
+      />
+
+      <ContributionMeter
+        coveredCount={state.coveredElements.length}
+        totalCount={TOTAL_COLLECTABLE}
+      />
+    </div>
+  );
+}
+
+function AuthorInput({ onSubmit }: { onSubmit: (name: string) => void }) {
+  const [name, setName] = useState("");
+  return (
+    <div className="bg-white rounded-2xl shadow p-6 space-y-3 text-center">
+      <p className="text-lg font-bold text-slate-800">Who wrote this story?</p>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && name.trim() && onSubmit(name.trim())}
+        placeholder="Your name…"
+        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-base text-center text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+      />
+      <button
+        onClick={() => name.trim() && onSubmit(name.trim())}
+        className="w-full py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-white font-semibold transition"
+      >
+        Add my name
+      </button>
     </div>
   );
 }
