@@ -1,30 +1,40 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import Anthropic from "@anthropic-ai/sdk";
-import { COLLECTABLE_ELEMENTS, ELEMENT_LABELS } from "@/lib/prompts";
-import type { StoryElement } from "@/lib/prompts";
+import { ELEMENT_LABELS, AGE_RANGE_CONFIG } from "@/lib/prompts";
+import type { AgeRange, StoryElement } from "@/lib/prompts";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const elementList = COLLECTABLE_ELEMENTS.map(
-  (el) => `- ${el}: ${ELEMENT_LABELS[el as StoryElement]}`
-).join("\n");
+function buildSystemPrompt(
+  chapterNumber: number,
+  ageRange: AgeRange,
+  previousCliffhanger?: string
+): string {
+  const tier = AGE_RANGE_CONFIG[ageRange];
 
-function buildSystemPrompt(chapterNumber: number, previousCliffhanger?: string): string {
   const chapterContext =
     chapterNumber > 1 && previousCliffhanger
       ? `\nThis is Chapter ${chapterNumber}. The previous chapter ended with:\n"${previousCliffhanger}"\nAsk questions that build on what came before and explore what happens next.\n`
       : "";
 
-  return `You are a creative story interviewer helping a child (age 10–14) build their own story.${chapterContext}
+  const elementList = tier.elements
+    .map((el) => `- ${el}: ${ELEMENT_LABELS[el as StoryElement] ?? el}`)
+    .join("\n");
+
+  const readySignal = tier.readyElements.join(", ");
+
+  return `You are a creative story interviewer helping build a story for ${tier.readerDescription}.${chapterContext}
 
 YOUR ONLY JOB IS TO ASK THE NEXT GREAT QUESTION.
 
 You will be shown the FULL conversation history — every question asked and every answer given. Read all of it before writing anything.
 
+QUESTION STYLE: ${tier.questionStyle}
+
 THE STORY ELEMENTS YOU NEED TO COLLECT:
 ${elementList}
 
-SIGNAL READY when these 8 are covered: character, desire, motivation, setting, inciting-incident, obstacle, internal-conflict, stakes
+SIGNAL READY when these are covered: ${readySignal}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULES FOR YOUR PROMPT (read carefully)
@@ -93,6 +103,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     chapterNumber = 1,
     previousCliffhanger,
     conversationHistory = [],
+    ageRange = "older",
   } = req.body as {
     story: string;
     input: string;
@@ -102,6 +113,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     chapterNumber?: number;
     previousCliffhanger?: string;
     conversationHistory?: Array<{ prompt: string; answer: string }>;
+    ageRange?: AgeRange;
   };
 
   if (!input) {
@@ -129,7 +141,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 600,
-      system: buildSystemPrompt(chapterNumber, previousCliffhanger),
+      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger),
       messages: [{ role: "user", content: userPrompt }],
     });
 

@@ -13,7 +13,9 @@ import {
   FIRST_PROMPT,
   NEXT_CHAPTER_FIRST_PROMPT,
   guidedPrompts,
+  AGE_RANGE_CONFIG,
 } from "@/lib/prompts";
+import type { AgeRange } from "@/lib/prompts";
 import { suggestions } from "@/lib/suggestions";
 import { extractNouns, mergeEntities } from "@/lib/entityExtractor";
 import {
@@ -24,7 +26,7 @@ import {
 } from "@/lib/storyBuilder";
 
 type Mode = "guided" | "building" | "chapter";
-type Screen = "landing" | "story";
+type Screen = "landing" | "age-select" | "story";
 
 interface AppState {
   chapterNumber: number;
@@ -39,13 +41,14 @@ interface AppState {
   chapterTitle: string;
   chapter: string;
   cliffhanger: string;
-  imageUrl: string;
+  imageUrls: string[];
   // Across chapters
   author: string;
   savedChapters: ChapterRecord[];
   // Persistence
   storyId: string | null;
   userEmail: string | null;
+  ageRange: AgeRange;
 }
 
 const INITIAL_STATE: AppState = {
@@ -60,11 +63,12 @@ const INITIAL_STATE: AppState = {
   chapterTitle: "",
   chapter: "",
   cliffhanger: "",
-  imageUrl: "",
+  imageUrls: [],
   author: "",
   savedChapters: [],
   storyId: null,
   userEmail: null,
+  ageRange: "older",
 };
 
 function buildStoryTitle(state: AppState): string {
@@ -97,11 +101,12 @@ function serializeState(state: AppState): Record<string, unknown> {
     chapterTitle: state.chapterTitle,
     chapter: state.chapter,
     cliffhanger: state.cliffhanger,
-    imageUrl: state.imageUrl,
+    imageUrls: state.imageUrls,
     author: state.author,
     savedChapters: state.savedChapters,
     storyId: state.storyId,
     userEmail: state.userEmail,
+    ageRange: state.ageRange,
   };
 }
 
@@ -163,6 +168,7 @@ export default function Home() {
       entities: state.entities,
       chapterNumber: state.chapterNumber,
       previousCliffhanger,
+      ageRange: state.ageRange,
     }).then((result) => {
       clearInterval(interval);
       if (result.error) {
@@ -176,7 +182,7 @@ export default function Home() {
           chapterTitle: result.chapterTitle,
           chapter: result.chapter,
           cliffhanger: result.cliffhanger,
-          imageUrl: result.imageUrl,
+          imageUrls: result.imageUrls ?? [],
         };
         // Auto-save fire-and-forget
         autoSave(next);
@@ -231,6 +237,11 @@ export default function Home() {
     });
     setCurrentPrompt(FIRST_PROMPT);
     resetEditState();
+    setScreen("age-select");
+  }
+
+  function handleAgeSelect(range: AgeRange) {
+    setState((s) => ({ ...s, ageRange: range }));
     setScreen("story");
   }
 
@@ -248,11 +259,12 @@ export default function Home() {
       chapterTitle: (savedState.chapterTitle as string) ?? "",
       chapter: (savedState.chapter as string) ?? "",
       cliffhanger: (savedState.cliffhanger as string) ?? "",
-      imageUrl: (savedState.imageUrl as string) ?? "",
+      imageUrls: (savedState.imageUrls as string[]) ?? (savedState.imageUrl ? [savedState.imageUrl as string] : []),
       author: (savedState.author as string) ?? "",
       savedChapters: (savedState.savedChapters as ChapterRecord[]) ?? [],
       storyId: (savedState.storyId as string) ?? null,
       userEmail: (savedState.userEmail as string) ?? (savedState._savedEmail as string) ?? null,
+      ageRange: (savedState.ageRange as AgeRange) ?? "older",
     };
 
     // Restore prompt cursor
@@ -296,6 +308,8 @@ export default function Home() {
       answer: newInputs[i] ?? "",
     }));
 
+    const tier = AGE_RANGE_CONFIG[state.ageRange];
+
     const result = await generateStorySegment({
       story: state.story,
       input,
@@ -307,6 +321,7 @@ export default function Home() {
       chapterNumber: state.chapterNumber,
       previousCliffhanger,
       conversationHistory,
+      ageRange: state.ageRange,
     });
 
     const newStory = result.story ?? state.story;
@@ -315,11 +330,12 @@ export default function Home() {
     if (result.nextPrompt) {
       setCurrentPrompt(result.nextPrompt);
     } else {
-      setCurrentPrompt(guidedPrompts[nextStep] ?? guidedPrompts[guidedPrompts.length - 1]);
+      const fallbacks = tier.fallbackPrompts;
+      setCurrentPrompt(fallbacks[nextStep] ?? fallbacks[fallbacks.length - 1]);
     }
 
     const shouldBuild =
-      (result.readyToWrite && nextStep >= MIN_QUESTIONS) || nextStep >= MAX_QUESTIONS;
+      (result.readyToWrite && nextStep >= tier.minQuestions) || nextStep >= tier.maxQuestions;
 
     const nextState: AppState = {
       ...state,
@@ -381,7 +397,7 @@ export default function Home() {
       chapterNumber: state.chapterNumber,
       title: state.chapterTitle,
       chapter: state.chapter,
-      imageUrl: state.imageUrl,
+      imageUrls: state.imageUrls,
       cliffhanger: state.cliffhanger,
     };
 
@@ -418,6 +434,29 @@ export default function Home() {
         onResume={handlePickerResume}
         initialEmail={state.userEmail ?? undefined}
       />
+    );
+  }
+
+  // ── AGE SELECT ───────────────────────────────────────────────
+  if (screen === "age-select") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 px-6 gap-10">
+        <div className="text-center space-y-2">
+          <h2 className="text-3xl font-bold text-white">Who is this story for?</h2>
+          <p className="text-slate-400 text-base">We'll tailor the story to match their reading level.</p>
+        </div>
+        <div className="w-full max-w-xs space-y-3">
+          {(["tiny", "young", "middle", "older"] as AgeRange[]).map((range) => (
+            <button
+              key={range}
+              onClick={() => handleAgeSelect(range)}
+              className="w-full py-4 rounded-2xl bg-slate-800 hover:bg-amber-400 border border-slate-700 hover:border-amber-400 text-white font-semibold text-lg transition"
+            >
+              {AGE_RANGE_CONFIG[range].label}
+            </button>
+          ))}
+        </div>
+      </div>
     );
   }
 
@@ -458,11 +497,6 @@ export default function Home() {
             </button>
           )}
 
-          {/* Image */}
-          {state.imageUrl && (
-            <ChapterImage src={state.imageUrl} />
-          )}
-
           {/* Title */}
           <div className="text-center space-y-1">
             <p className="text-xs font-semibold text-amber-600 tracking-widest uppercase">
@@ -474,11 +508,33 @@ export default function Home() {
             )}
           </div>
 
-          {/* Chapter text */}
-          <div className="bg-white rounded-2xl shadow p-8">
-            <p className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">
-              {state.chapter}
-            </p>
+          {/* Chapter text with interspersed images */}
+          <div className="bg-white rounded-2xl shadow p-8 space-y-8">
+            {(() => {
+              const paragraphs = state.chapter.split("\n\n").filter((p) => p.trim());
+              const images = state.imageUrls;
+              if (images.length === 0) {
+                return (
+                  <p className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">
+                    {state.chapter}
+                  </p>
+                );
+              }
+              const groupSize = Math.ceil(paragraphs.length / images.length);
+              return images.map((imgUrl, i) => {
+                const group = paragraphs.slice(i * groupSize, i * groupSize + groupSize);
+                return (
+                  <div key={i} className="space-y-4">
+                    <ChapterImage src={imgUrl} />
+                    {group.map((para, j) => (
+                      <p key={j} className="font-serif text-lg leading-relaxed text-slate-800">
+                        {para}
+                      </p>
+                    ))}
+                  </div>
+                );
+              });
+            })()}
           </div>
 
           {/* Author input (if not yet set) */}

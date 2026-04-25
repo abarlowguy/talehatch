@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import Anthropic from "@anthropic-ai/sdk";
+import { AGE_RANGE_CONFIG } from "@/lib/prompts";
+import type { AgeRange } from "@/lib/prompts";
 
 export const config = {
   maxDuration: 60,
@@ -7,22 +9,39 @@ export const config = {
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-function buildSystemPrompt(chapterNumber: number, previousCliffhanger?: string): string {
+function buildSystemPrompt(
+  chapterNumber: number,
+  ageRange: AgeRange,
+  previousCliffhanger?: string
+): string {
+  const tier = AGE_RANGE_CONFIG[ageRange];
   const isFirstChapter = chapterNumber === 1;
 
   const continuationContext = !isFirstChapter && previousCliffhanger
     ? `\n\nThis is Chapter ${chapterNumber} of an ongoing story. The previous chapter ended with this cliffhanger:\n"${previousCliffhanger}"\n\nThe chapter must open by picking up from that cliffhanger — reference it directly in the first paragraph.`
     : "";
 
-  return `You are writing Chapter ${chapterNumber} of a children's story (ages 10–14).${continuationContext}
+  const ageGuidance: Record<AgeRange, string> = {
+    tiny:
+      "Write like a picture book read aloud. Every sentence must be short — 5 to 8 words maximum. Use only the simplest vocabulary a 4-year-old knows. Warm, gentle, cheerful tone. No scary moments. End with a happy resolution or a gentle 'I wonder what happens next' moment — NOT a cliffhanger.",
+    young:
+      "Use very short sentences. Simple, concrete vocabulary — nothing abstract. Bright and fun tone. No dark or scary themes. Lots of action, colour, and wonder.",
+    middle:
+      "Use clear, readable language. Mix short and medium sentences. Some tension and mild stakes are fine. Avoid heavy psychological depth.",
+    older:
+      "Write like a real published author. Vary sentence length. Short punchy sentences for action; longer ones for description. Full emotional and psychological depth.",
+  };
 
-You have been given the child's answers to guided prompts. These answers contain ALL the raw material for the chapter. Transform them into a vivid, engaging chapter — roughly 1,200 to 1,500 words.
+  return `You are writing Chapter ${chapterNumber} of a story for ${tier.readerDescription}.${continuationContext}
+
+You have been given the child's answers to guided prompts. These answers contain ALL the raw material for the chapter. Transform them into a vivid, engaging chapter — roughly ${tier.chapterWords} words.
+
+STYLE: ${ageGuidance[ageRange]}
 
 RULES:
 - Use ONLY the ideas the child provided. Do not invent major new characters, locations, or plot elements.
 - You MAY add sensory detail, atmosphere, pacing, and emotional texture.
 - Write in third person, past tense, as a real published book for young readers.
-- Vary sentence length. Short punchy sentences for action and tension. Longer ones for description.
 - Clear structure: beginning (establish the scene), middle (conflict escalates), end (cliffhanger).
 - DO NOT use the word "suddenly." DO NOT use clichés.
 - Write like a real author. Make it feel earned.
@@ -43,8 +62,13 @@ CHAPTER:
 CLIFFHANGER:
 [2–3 sentences summarising the exact cliffhanger moment — written so the next chapter can pick up from it precisely]
 
-IMAGE_PROMPT:
-[A vivid description of the most visually striking scene. Characters, appearance, environment, mood, lighting, colour palette. Under 120 words. Kid-friendly watercolour style.]`;
+IMAGE_PROMPTS:
+Write 3 to 5 image prompts — one for each distinct scene or visual moment in this chapter, in order. Number them. Each prompt should describe characters, setting, action, mood, lighting, and colour palette in under 80 words. Kid-friendly watercolour illustration style.
+
+1. [Scene description]
+2. [Scene description]
+3. [Scene description]
+(add more if the chapter has more distinct scenes, up to 5)`;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -52,12 +76,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { inputs, story, entities, chapterNumber = 1, previousCliffhanger } = req.body as {
+  const { inputs, story, entities, chapterNumber = 1, previousCliffhanger, ageRange = "older" } = req.body as {
     inputs: string[];
     story: string;
     entities: string[];
     chapterNumber?: number;
     previousCliffhanger?: string;
+    ageRange?: AgeRange;
   };
 
   if (!inputs || inputs.length === 0) {
@@ -79,30 +104,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4000,
-      system: buildSystemPrompt(chapterNumber, previousCliffhanger),
+      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger),
       messages: [{ role: "user", content: userPrompt }],
     });
 
     const raw = (message.content[0] as { text: string }).text.trim();
 
     const titleMatch = raw.match(/TITLE:\s*([\s\S]*?)(?=CHAPTER:|$)/i);
-    const chapterMatch = raw.match(/CHAPTER:\s*([\s\S]*?)(?=CLIFFHANGER:|IMAGE_PROMPT:|$)/i);
-    const cliffhangerMatch = raw.match(/CLIFFHANGER:\s*([\s\S]*?)(?=IMAGE_PROMPT:|$)/i);
-    const imageMatch = raw.match(/IMAGE_PROMPT:\s*([\s\S]*)/i);
+    const chapterMatch = raw.match(/CHAPTER:\s*([\s\S]*?)(?=CLIFFHANGER:|IMAGE_PROMPTS:|$)/i);
+    const cliffhangerMatch = raw.match(/CLIFFHANGER:\s*([\s\S]*?)(?=IMAGE_PROMPTS:|$)/i);
+    const imageSection = raw.match(/IMAGE_PROMPTS:\s*([\s\S]*)/i)?.[1] ?? "";
 
     const chapterTitle = titleMatch ? titleMatch[1].trim() : `Chapter ${chapterNumber}`;
     const chapter = chapterMatch ? chapterMatch[1].trim() : raw;
     const cliffhanger = cliffhangerMatch ? cliffhangerMatch[1].trim() : "";
-    const imagePromptText = imageMatch
-      ? imageMatch[1].trim()
-      : "A child in a mysterious landscape, dramatic lighting, kid-friendly storybook art style";
 
-    const styledPrompt = `${imagePromptText}, children's book illustration, watercolour and ink, warm and magical, highly detailed`;
-    const seed = Math.floor(Math.random() * 999999);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(styledPrompt)}?width=768&height=768&model=flux&seed=${seed}`;
-    const imageUrl = `/api/image-proxy?url=${encodeURIComponent(pollinationsUrl)}`;
+    // Parse numbered image prompts, filter out the example placeholder lines
+    const rawImageLines = imageSection
+      .split("\n")
+      .map((line) => line.replace(/^\d+\.\s*/, "").trim())
+      .filter((line) => line.length > 15 && !line.startsWith("["));
 
-    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrl });
+    const imagePromptTexts = rawImageLines.length > 0
+      ? rawImageLines
+      : ["A child in a mysterious landscape, dramatic lighting, kid-friendly storybook art style"];
+
+    const imageUrls = imagePromptTexts.map((prompt) => {
+      const styled = `${prompt}, children's book illustration, watercolour and ink, warm and magical, highly detailed`;
+      const seed = Math.floor(Math.random() * 999999);
+      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=flux&seed=${seed}`;
+      return `/api/image-proxy?url=${encodeURIComponent(pollinationsUrl)}`;
+    });
+
+    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Could not generate chapter. Try again." });

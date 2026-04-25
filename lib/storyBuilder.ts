@@ -9,6 +9,7 @@ export interface GenerateRequest {
   chapterNumber?: number;
   previousCliffhanger?: string;
   conversationHistory?: Array<{ prompt: string; answer: string }>;
+  ageRange?: string;
 }
 
 export interface GenerateResponse {
@@ -25,13 +26,14 @@ export interface ChapterRequest {
   entities: string[];
   chapterNumber?: number;
   previousCliffhanger?: string;
+  ageRange?: string;
 }
 
 export interface ChapterResponse {
   chapterTitle: string;
   chapter: string;
   cliffhanger: string;
-  imageUrl: string;
+  imageUrls: string[];
   error?: string;
 }
 
@@ -50,7 +52,7 @@ export interface ChapterRecord {
   chapterNumber: number;
   title: string;
   chapter: string;
-  imageUrl: string;
+  imageUrls: string[];
   cliffhanger: string;
 }
 
@@ -73,7 +75,7 @@ export async function generateChapter(req: ChapterRequest): Promise<ChapterRespo
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    return { chapterTitle: "", chapter: "", cliffhanger: "", imageUrl: "", error: "Could not generate chapter. Try again." };
+    return { chapterTitle: "", chapter: "", cliffhanger: "", imageUrls: [], error: "Could not generate chapter. Try again." };
   }
   return res.json();
 }
