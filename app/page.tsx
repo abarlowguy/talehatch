@@ -43,6 +43,7 @@ interface AppState {
   cliffhanger: string;
   imageUrls: string[];
   // Across chapters
+  storyTitle: string;
   author: string;
   savedChapters: ChapterRecord[];
   // Persistence
@@ -64,6 +65,7 @@ const INITIAL_STATE: AppState = {
   chapter: "",
   cliffhanger: "",
   imageUrls: [],
+  storyTitle: "",
   author: "",
   savedChapters: [],
   storyId: null,
@@ -102,6 +104,7 @@ function serializeState(state: AppState): Record<string, unknown> {
     chapter: state.chapter,
     cliffhanger: state.cliffhanger,
     imageUrls: state.imageUrls,
+    storyTitle: state.storyTitle,
     author: state.author,
     savedChapters: state.savedChapters,
     storyId: state.storyId,
@@ -186,6 +189,7 @@ export default function Home() {
         const next: AppState = {
           ...s,
           mode: "chapter",
+          storyTitle: result.storyTitle ?? s.storyTitle,
           chapterTitle: result.chapterTitle,
           chapter: result.chapter,
           cliffhanger: result.cliffhanger,
@@ -207,7 +211,7 @@ export default function Home() {
   function autoSave(s: AppState): void {
     if (!s.userEmail) return; // no email = local only
 
-    const title = buildStoryTitle(s);
+    const title = s.storyTitle || buildStoryTitle(s);
     const chapterCount = s.savedChapters.length + (s.mode === "chapter" ? 1 : 0);
     const serialized = serializeState(s);
 
@@ -267,6 +271,7 @@ export default function Home() {
       chapter: (savedState.chapter as string) ?? "",
       cliffhanger: (savedState.cliffhanger as string) ?? "",
       imageUrls: (savedState.imageUrls as string[]) ?? (savedState.imageUrl ? [savedState.imageUrl as string] : []),
+      storyTitle: (savedState.storyTitle as string) ?? "",
       author: (savedState.author as string) ?? "",
       savedChapters: (savedState.savedChapters as ChapterRecord[]) ?? [],
       storyId: (savedState.storyId as string) ?? null,
@@ -790,6 +795,7 @@ type SlotState = "pending" | "loading" | "done" | "error";
 function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: string[] }) {
   const [slots, setSlots] = useState<SlotState[]>(() => imageUrls.map((_, i) => i === 0 ? "loading" : "pending"));
   const [blobUrls, setBlobUrls] = useState<(string | null)[]>(() => imageUrls.map(() => null));
+  const [urls, setUrls] = useState<string[]>(() => [...imageUrls]);
 
   const paragraphs = chapter.split("\n\n").filter((p) => p.trim());
   const groupSize = imageUrls.length > 0 ? Math.ceil(paragraphs.length / imageUrls.length) : paragraphs.length;
@@ -806,18 +812,26 @@ function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: strin
     }
   }
 
+  function regenerate(i: number) {
+    const base = urls[i].replace(/&seed=\d+/, "");
+    const newUrl = `${base}&seed=${Math.floor(Math.random() * 999999)}`;
+    setUrls((prev) => { const n = [...prev]; n[i] = newUrl; return n; });
+    setBlobUrls((prev) => { const n = [...prev]; n[i] = null; return n; });
+    setSlots((prev) => { const n = [...prev]; n[i] = "loading"; return n; });
+  }
+
   return (
     <>
-      {imageUrls.map((imgUrl, i) => {
+      {urls.map((imgUrl, i) => {
         const group = paragraphs.slice(i * groupSize, (i + 1) * groupSize);
         const slot = slots[i];
         const blobSrc = blobUrls[i];
         return (
           <div key={i} className="space-y-4">
-            <div className="w-full rounded-2xl overflow-hidden shadow-lg bg-slate-200">
+            <div className="w-full rounded-2xl overflow-hidden shadow-lg bg-slate-200 relative group">
               {(slot === "pending") && (
                 <div className="w-full aspect-video flex items-center justify-center text-slate-300 text-xs">
-                  Illustration {i + 1} of {imageUrls.length}
+                  Illustration {i + 1} of {urls.length}
                 </div>
               )}
               {(slot === "loading") && (
@@ -831,8 +845,14 @@ function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: strin
                 </div>
               )}
               {slot === "error" && (
-                <div className="w-full aspect-video flex items-center justify-center text-slate-400 text-sm italic">
-                  Illustration unavailable
+                <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 text-slate-400 text-sm italic">
+                  <p>Illustration unavailable</p>
+                  <button
+                    onClick={() => regenerate(i)}
+                    className="px-3 py-1 rounded-lg bg-slate-300 hover:bg-slate-400 text-slate-600 text-xs font-medium not-italic transition"
+                  >
+                    Try again
+                  </button>
                 </div>
               )}
               {slot === "loading" && (
@@ -843,12 +863,20 @@ function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: strin
                 />
               )}
               {slot === "done" && blobSrc && (
-                <img
-                  src={blobSrc}
-                  alt="Chapter illustration"
-                  className="w-full"
-                  style={{ display: "block" }}
-                />
+                <>
+                  <img
+                    src={blobSrc}
+                    alt="Chapter illustration"
+                    className="w-full"
+                    style={{ display: "block" }}
+                  />
+                  <button
+                    onClick={() => regenerate(i)}
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 rounded-lg bg-black/40 hover:bg-black/60 text-white text-xs font-medium"
+                  >
+                    ↻ New illustration
+                  </button>
+                </>
               )}
             </div>
             {group.map((para, j) => (

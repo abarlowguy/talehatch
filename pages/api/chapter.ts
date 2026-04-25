@@ -17,6 +17,10 @@ function buildSystemPrompt(
   const tier = AGE_RANGE_CONFIG[ageRange];
   const isFirstChapter = chapterNumber === 1;
 
+  const storyTitleSection = isFirstChapter
+    ? `STORY_TITLE:\n[A short, evocative title for the whole story — 2–5 words. Not the chapter title. Something that captures the spirit of the adventure.]\n\n`
+    : "";
+
   const continuationContext = !isFirstChapter && previousCliffhanger
     ? `\n\nThis is Chapter ${chapterNumber} of an ongoing story. The previous chapter ended with this cliffhanger:\n"${previousCliffhanger}"\n\nThe chapter must open by picking up from that cliffhanger — reference it directly in the first paragraph.`
     : "";
@@ -53,7 +57,7 @@ CLIFFHANGER RULES (CRITICAL):
 
 Return your response in EXACTLY this format:
 
-TITLE:
+${storyTitleSection}TITLE:
 [A short, evocative chapter title — not "Chapter ${chapterNumber}", just the title]
 
 CHAPTER:
@@ -110,6 +114,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const raw = (message.content[0] as { text: string }).text.trim();
 
+    const storyTitleMatch = chapterNumber === 1
+      ? raw.match(/STORY_TITLE:\s*([\s\S]*?)(?=TITLE:|$)/i)
+      : null;
+    const storyTitle = storyTitleMatch ? storyTitleMatch[1].trim() : undefined;
+
     const titleMatch = raw.match(/TITLE:\s*([\s\S]*?)(?=CHAPTER:|$)/i);
     const chapterMatch = raw.match(/CHAPTER:\s*([\s\S]*?)(?=CLIFFHANGER:|IMAGE_PROMPTS:|$)/i);
     const cliffhangerMatch = raw.match(/CLIFFHANGER:\s*([\s\S]*?)(?=IMAGE_PROMPTS:|$)/i);
@@ -135,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=turbo&seed=${seed}`;
     });
 
-    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls });
+    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls, storyTitle });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Could not generate chapter. Try again." });

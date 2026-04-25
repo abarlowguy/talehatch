@@ -84,6 +84,11 @@ export async function createStory(
   `;
 }
 
+export async function deleteStory(id: string): Promise<void> {
+  const sql = getDb();
+  await sql`DELETE FROM stories WHERE id = ${id}`;
+}
+
 export async function updateStory(
   id: string,
   title: string,

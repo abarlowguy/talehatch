@@ -27,6 +27,8 @@ export default function StoryPicker({ onStart, onResume, initialEmail }: Props) 
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [resumeLoading, setResumeLoading] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initialEmail) return;
@@ -76,6 +78,21 @@ export default function StoryPicker({ onStart, onResume, initialEmail }: Props) 
     } catch {
       setFetchError("Could not load that story. Please try again.");
       setResumeLoading(null);
+    }
+  }
+
+  async function handleDeleteStory(storyId: string) {
+    setDeleteLoading(storyId);
+    setFetchError("");
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setStories((prev) => prev.filter((s) => s.id !== storyId));
+      setDeleteConfirm(null);
+    } catch {
+      setFetchError("Could not delete that story. Please try again.");
+    } finally {
+      setDeleteLoading(null);
     }
   }
 
@@ -144,23 +161,60 @@ export default function StoryPicker({ onStart, onResume, initialEmail }: Props) 
             Your Stories
           </p>
           {stories.map((story) => (
-            <button
+            <div
               key={story.id}
-              onClick={() => handlePickStory(story.id)}
-              disabled={resumeLoading !== null}
-              className="w-full text-left p-5 rounded-2xl bg-slate-800 border border-slate-700 hover:border-amber-400 hover:bg-slate-700 transition disabled:opacity-50 space-y-1"
+              className="w-full rounded-2xl bg-slate-800 border border-slate-700 overflow-hidden"
             >
-              <p className="text-white font-semibold text-base">{story.title}</p>
-              <p className="text-slate-400 text-sm">
-                {story.chapter_count === 0
-                  ? "In progress"
-                  : `${story.chapter_count} chapter${story.chapter_count !== 1 ? "s" : ""}`}
-                {" · "}Last updated {formatDate(story.updated_at)}
-              </p>
-              {resumeLoading === story.id && (
-                <p className="text-amber-400 text-xs">Loading…</p>
+              {deleteConfirm === story.id ? (
+                <div className="p-5 space-y-3">
+                  <p className="text-white text-sm font-medium">Delete "{story.title}"?</p>
+                  <p className="text-slate-400 text-xs">This cannot be undone.</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      disabled={deleteLoading === story.id}
+                      className="flex-1 py-2 rounded-xl border border-slate-600 text-slate-400 text-sm hover:border-slate-500 transition disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleDeleteStory(story.id)}
+                      disabled={deleteLoading === story.id}
+                      className="flex-1 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold transition disabled:opacity-50"
+                    >
+                      {deleteLoading === story.id ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-stretch">
+                  <button
+                    onClick={() => handlePickStory(story.id)}
+                    disabled={resumeLoading !== null || deleteLoading !== null}
+                    className="flex-1 text-left p-5 hover:bg-slate-700 transition disabled:opacity-50 space-y-1"
+                  >
+                    <p className="text-white font-semibold text-base">{story.title}</p>
+                    <p className="text-slate-400 text-sm">
+                      {story.chapter_count === 0
+                        ? "In progress"
+                        : `${story.chapter_count} chapter${story.chapter_count !== 1 ? "s" : ""}`}
+                      {" · "}Last updated {formatDate(story.updated_at)}
+                    </p>
+                    {resumeLoading === story.id && (
+                      <p className="text-amber-400 text-xs">Loading…</p>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(story.id)}
+                    disabled={resumeLoading !== null || deleteLoading !== null}
+                    className="px-4 text-slate-600 hover:text-rose-400 hover:bg-slate-700 transition disabled:opacity-50 border-l border-slate-700 text-lg"
+                    aria-label="Delete story"
+                  >
+                    ×
+                  </button>
+                </div>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}

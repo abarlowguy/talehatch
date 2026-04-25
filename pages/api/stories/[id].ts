@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { initDb, getStory, updateStory } from "@/lib/db";
+import { initDb, getStory, updateStory, deleteStory } from "@/lib/db";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await initDb();
@@ -26,6 +26,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     await updateStory(id, title, chapterCount, state);
+    return res.status(200).json({ ok: true });
+  }
+
+  if (req.method === "DELETE") {
+    await deleteStory(id);
     return res.status(200).json({ ok: true });
   }
 
