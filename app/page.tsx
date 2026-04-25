@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import Image from "next/image";
 import AnswerLog from "@/components/AnswerLog";
 import PromptBox from "@/components/PromptBox";
 import InputBar from "@/components/InputBar";
 import ContributionMeter from "@/components/ContributionMeter";
+import StoryPicker from "@/components/StoryPicker";
 import {
   MIN_QUESTIONS,
   MAX_QUESTIONS,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/storyBuilder";
 
 type Mode = "guided" | "building" | "chapter";
+type Screen = "landing" | "story";
 
 interface AppState {
   chapterNumber: number;
@@ -42,6 +43,9 @@ interface AppState {
   // Across chapters
   author: string;
   savedChapters: ChapterRecord[];
+  // Persistence
+  storyId: string | null;
+  userEmail: string | null;
 }
 
 const INITIAL_STATE: AppState = {
@@ -59,9 +63,50 @@ const INITIAL_STATE: AppState = {
   imageUrl: "",
   author: "",
   savedChapters: [],
+  storyId: null,
+  userEmail: null,
 };
 
+function buildStoryTitle(state: AppState): string {
+  // Try to form a title from entities or inputs
+  const firstEntity = state.entities[0];
+  const secondEntity = state.entities[1];
+  if (firstEntity && secondEntity) {
+    return `${firstEntity}'s Adventure with ${secondEntity}`;
+  }
+  if (firstEntity) {
+    return `${firstEntity}'s Story`;
+  }
+  if (state.inputs.length > 0) {
+    const words = state.inputs[0].split(" ").slice(0, 5).join(" ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+  return `Chapter ${state.chapterNumber} Story`;
+}
+
+function serializeState(state: AppState): Record<string, unknown> {
+  return {
+    chapterNumber: state.chapterNumber,
+    mode: state.mode,
+    step: state.step,
+    inputs: state.inputs,
+    promptHistory: state.promptHistory,
+    story: state.story,
+    entities: state.entities,
+    coveredElements: state.coveredElements,
+    chapterTitle: state.chapterTitle,
+    chapter: state.chapter,
+    cliffhanger: state.cliffhanger,
+    imageUrl: state.imageUrl,
+    author: state.author,
+    savedChapters: state.savedChapters,
+    storyId: state.storyId,
+    userEmail: state.userEmail,
+  };
+}
+
 export default function Home() {
+  const [screen, setScreen] = useState<Screen>("landing");
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [isLoading, setIsLoading] = useState(false);
   const [ideasOpen, setIdeasOpen] = useState(false);
@@ -124,20 +169,108 @@ export default function Home() {
         setBuildingStatus("Something went wrong. Refresh to try again.");
         return;
       }
-      setState((s) => ({
-        ...s,
-        mode: "chapter",
-        chapterTitle: result.chapterTitle,
-        chapter: result.chapter,
-        cliffhanger: result.cliffhanger,
-        imageUrl: result.imageUrl,
-      }));
+      setState((s) => {
+        const next: AppState = {
+          ...s,
+          mode: "chapter",
+          chapterTitle: result.chapterTitle,
+          chapter: result.chapter,
+          cliffhanger: result.cliffhanger,
+          imageUrl: result.imageUrl,
+        };
+        // Auto-save fire-and-forget
+        autoSave(next);
+        return next;
+      });
       resetEditState();
     });
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.mode]);
+
+  // ── Auto-save helpers ────────────────────────────────────────
+
+  function autoSave(s: AppState): void {
+    if (!s.userEmail) return; // no email = local only
+
+    const title = buildStoryTitle(s);
+    const chapterCount = s.savedChapters.length + (s.mode === "chapter" ? 1 : 0);
+    const serialized = serializeState(s);
+
+    if (!s.storyId) {
+      // First save — need a new ID. We'll patch state after.
+      const newId = crypto.randomUUID();
+      setState((prev) => ({ ...prev, storyId: newId }));
+      fetch("/api/stories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: s.userEmail,
+          id: newId,
+          title,
+          state: { ...serialized, storyId: newId },
+        }),
+      }).catch(() => {/* fire-and-forget */});
+    } else {
+      fetch(`/api/stories/${s.storyId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, chapterCount, state: serialized }),
+      }).catch(() => {/* fire-and-forget */});
+    }
+  }
+
+  // ── Handlers from StoryPicker ────────────────────────────────
+
+  function handlePickerStart(email: string) {
+    setState({
+      ...INITIAL_STATE,
+      storyId: null,
+      userEmail: email,
+    });
+    setCurrentPrompt(FIRST_PROMPT);
+    resetEditState();
+    setScreen("story");
+  }
+
+  function handlePickerResume(savedState: Record<string, unknown>) {
+    // Merge saved state back into AppState, falling back to INITIAL_STATE defaults
+    const restored: AppState = {
+      chapterNumber: (savedState.chapterNumber as number) ?? INITIAL_STATE.chapterNumber,
+      mode: (savedState.mode as Mode) ?? "guided",
+      step: (savedState.step as number) ?? 0,
+      inputs: (savedState.inputs as string[]) ?? [],
+      promptHistory: (savedState.promptHistory as string[]) ?? [],
+      story: (savedState.story as string) ?? "",
+      entities: (savedState.entities as string[]) ?? [],
+      coveredElements: (savedState.coveredElements as string[]) ?? [],
+      chapterTitle: (savedState.chapterTitle as string) ?? "",
+      chapter: (savedState.chapter as string) ?? "",
+      cliffhanger: (savedState.cliffhanger as string) ?? "",
+      imageUrl: (savedState.imageUrl as string) ?? "",
+      author: (savedState.author as string) ?? "",
+      savedChapters: (savedState.savedChapters as ChapterRecord[]) ?? [],
+      storyId: (savedState.storyId as string) ?? null,
+      userEmail: (savedState.userEmail as string) ?? (savedState._savedEmail as string) ?? null,
+    };
+
+    // Restore prompt cursor
+    const step = restored.step;
+    if (restored.mode === "chapter") {
+      // Already on a chapter view — no prompt needed
+    } else {
+      setCurrentPrompt(
+        restored.chapterNumber > 1
+          ? NEXT_CHAPTER_FIRST_PROMPT
+          : (guidedPrompts[step] ?? guidedPrompts[guidedPrompts.length - 1])
+      );
+    }
+
+    setState(restored);
+    resetEditState();
+    setScreen("story");
+  }
 
   async function handleGuidedInput(input: string) {
     setIsLoading(true);
@@ -188,8 +321,8 @@ export default function Home() {
     const shouldBuild =
       (result.readyToWrite && nextStep >= MIN_QUESTIONS) || nextStep >= MAX_QUESTIONS;
 
-    setState((s) => ({
-      ...s,
+    const nextState: AppState = {
+      ...state,
       step: nextStep,
       mode: shouldBuild ? "building" : "guided",
       inputs: newInputs,
@@ -197,8 +330,10 @@ export default function Home() {
       story: newStory,
       entities: newEntities,
       coveredElements: newCovered,
-    }));
+    };
 
+    setState(nextState);
+    autoSave(nextState);
     setIsLoading(false);
   }
 
@@ -256,6 +391,8 @@ export default function Home() {
       author: s.author,
       entities: s.entities, // carry established characters/places
       savedChapters: [...s.savedChapters, saved],
+      storyId: s.storyId,
+      userEmail: s.userEmail,
     }));
 
     setCurrentPrompt(NEXT_CHAPTER_FIRST_PROMPT);
@@ -266,6 +403,17 @@ export default function Home() {
     setState(INITIAL_STATE);
     setCurrentPrompt(FIRST_PROMPT);
     resetEditState();
+    setScreen("landing");
+  }
+
+  // ── LANDING (StoryPicker) ────────────────────────────────────
+  if (screen === "landing") {
+    return (
+      <StoryPicker
+        onStart={(email: string) => handlePickerStart(email)}
+        onResume={handlePickerResume}
+      />
+    );
   }
 
   // ── BUILDING ──────────────────────────────────────────────────
@@ -297,15 +445,7 @@ export default function Home() {
 
           {/* Image */}
           {state.imageUrl && (
-            <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-lg bg-slate-200">
-              <Image
-                src={state.imageUrl}
-                alt="Chapter illustration"
-                fill
-                className="object-cover"
-                unoptimized
-              />
-            </div>
+            <ChapterImage src={state.imageUrl} />
           )}
 
           {/* Title */}
@@ -423,7 +563,7 @@ export default function Home() {
           {editMode === "direct" && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-slate-700">
-                Edit the chapter directly, then save when you're done.
+                Edit the chapter directly, then save when you are done.
               </p>
               <textarea
                 autoFocus
@@ -520,6 +660,47 @@ export default function Home() {
       <ContributionMeter
         coveredCount={state.coveredElements.length}
         totalCount={TOTAL_COLLECTABLE}
+      />
+    </div>
+  );
+}
+
+function ChapterImage({ src }: { src: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, []);
+
+  return (
+    <div className="w-full rounded-2xl overflow-hidden shadow-lg bg-slate-200">
+      {!loaded && !error && (
+        <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 text-slate-400 text-sm">
+          <div className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+            ))}
+          </div>
+          <p>Painting your illustration…</p>
+        </div>
+      )}
+      {error && (
+        <div className="w-full aspect-video flex items-center justify-center text-slate-400 text-sm italic">
+          Illustration unavailable
+        </div>
+      )}
+      <img
+        ref={imgRef}
+        src={src}
+        alt="Chapter illustration"
+        style={{ opacity: loaded ? 1 : 0, transition: "opacity 0.7s", display: "block" }}
+        className="w-full"
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
       />
     </div>
   );

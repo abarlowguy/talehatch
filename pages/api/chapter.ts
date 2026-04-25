@@ -99,7 +99,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const styledPrompt = `${imagePromptText}, children's book illustration, watercolour and ink, warm and magical, highly detailed`;
     const seed = Math.floor(Math.random() * 999999);
-    const imageUrl = `https://enter.pollinations.ai/prompt/${encodeURIComponent(styledPrompt)}?width=1024&height=576&nologo=true&model=flux&seed=${seed}`;
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(styledPrompt)}?width=768&height=768&model=flux&seed=${seed}`;
+    const imageUrl = `/api/image-proxy?url=${encodeURIComponent(pollinationsUrl)}`;
 
     return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrl });
   } catch (err) {
