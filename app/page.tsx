@@ -290,10 +290,10 @@ export default function Home() {
         ? state.savedChapters[state.savedChapters.length - 1].cliffhanger
         : undefined;
 
-    // Build full Q&A history so Claude can see exactly what's been asked and answered
-    const conversationHistory = state.promptHistory.map((prompt, i) => ({
+    // Build full Q&A history including the current turn so Claude sees all context
+    const conversationHistory = newPromptHistory.map((prompt, i) => ({
       prompt,
-      answer: state.inputs[i] ?? "",
+      answer: newInputs[i] ?? "",
     }));
 
     const result = await generateStorySegment({

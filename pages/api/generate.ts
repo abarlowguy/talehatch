@@ -108,17 +108,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Input required" });
   }
 
-  // Build the full conversation log so Claude can see exactly what's been asked and answered
-  const historyBlock =
-    conversationHistory.length > 0
-      ? conversationHistory
-          .map((turn, i) => `Q${i + 1}: ${turn.prompt}\nA${i + 1}: ${turn.answer}`)
-          .join("\n\n")
-      : "This is the first answer.";
+  // Full Q&A history — always includes the current turn (question + answer just submitted)
+  const historyBlock = conversationHistory
+    .map((turn, i) => `Q${i + 1}: ${turn.prompt}\nA${i + 1}: ${turn.answer}`)
+    .join("\n\n");
 
   const userPrompt = [
-    `FULL CONVERSATION HISTORY:\n${historyBlock}`,
-    `LATEST ANSWER (just submitted):\n${input}`,
+    historyBlock ? `FULL CONVERSATION HISTORY:\n${historyBlock}` : "No conversation yet.",
     entities.length > 0 ? `Named entities established so far:\n${entities.join(", ")}` : "",
     coveredElements.length > 0
       ? `Elements already covered: ${coveredElements.join(", ")}`
