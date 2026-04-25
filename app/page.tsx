@@ -127,6 +127,13 @@ export default function Home() {
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
 
+  const [viewingChapterIdx, setViewingChapterIdx] = useState<number | null>(null);
+
+  // Always land on the latest chapter when a new one is generated
+  useEffect(() => {
+    if (state.mode === "chapter") setViewingChapterIdx(null);
+  }, [state.mode]);
+
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resetInactivityTimer = useCallback(() => {
@@ -483,6 +490,32 @@ export default function Home() {
 
   // ── CHAPTER ───────────────────────────────────────────────────
   if (state.mode === "chapter") {
+    const totalChapters = state.savedChapters.length + 1;
+    const currentIdx = viewingChapterIdx ?? (totalChapters - 1);
+    const isViewingCurrent = viewingChapterIdx === null;
+    const canGoPrev = currentIdx > 0;
+    const canGoNext = currentIdx < totalChapters - 1;
+
+    const displayChapterNum = currentIdx + 1;
+    const displayTitle = isViewingCurrent
+      ? state.chapterTitle
+      : state.savedChapters[currentIdx].title;
+    const displayText = isViewingCurrent
+      ? state.chapter
+      : state.savedChapters[currentIdx].chapter;
+    const displayImageUrls = isViewingCurrent
+      ? state.imageUrls
+      : (state.savedChapters[currentIdx].imageUrls ?? []);
+
+    function goToPrev() {
+      const newIdx = currentIdx - 1;
+      setViewingChapterIdx(newIdx === totalChapters - 1 ? null : newIdx);
+    }
+    function goToNext() {
+      const newIdx = currentIdx + 1;
+      setViewingChapterIdx(newIdx === totalChapters - 1 ? null : newIdx);
+    }
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
         <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
@@ -497,12 +530,35 @@ export default function Home() {
             </button>
           )}
 
+          {/* Chapter navigation (only shown when there are multiple chapters) */}
+          {totalChapters > 1 && (
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={goToPrev}
+                disabled={!canGoPrev}
+                className="w-9 h-9 rounded-full bg-white shadow text-slate-500 hover:text-slate-800 hover:shadow-md transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-lg"
+              >
+                ‹
+              </button>
+              <span className="text-sm font-medium text-slate-500">
+                Chapter {displayChapterNum} of {totalChapters}
+              </span>
+              <button
+                onClick={goToNext}
+                disabled={!canGoNext}
+                className="w-9 h-9 rounded-full bg-white shadow text-slate-500 hover:text-slate-800 hover:shadow-md transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-lg"
+              >
+                ›
+              </button>
+            </div>
+          )}
+
           {/* Title */}
           <div className="text-center space-y-1">
             <p className="text-xs font-semibold text-amber-600 tracking-widest uppercase">
-              Chapter {state.chapterNumber}
+              Chapter {displayChapterNum}
             </p>
-            <h1 className="text-3xl font-bold text-slate-800">{state.chapterTitle}</h1>
+            <h1 className="text-3xl font-bold text-slate-800">{displayTitle}</h1>
             {state.author && (
               <p className="text-slate-500 text-sm">by {state.author}</p>
             )}
@@ -510,22 +566,22 @@ export default function Home() {
 
           {/* Chapter text with interspersed images */}
           <div className="bg-white rounded-2xl shadow p-8 space-y-8">
-            {state.imageUrls.length === 0 ? (
+            {displayImageUrls.length === 0 ? (
               <p className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">
-                {state.chapter}
+                {displayText}
               </p>
             ) : (
-              <ChapterBody chapter={state.chapter} imageUrls={state.imageUrls} />
+              <ChapterBody key={currentIdx} chapter={displayText} imageUrls={displayImageUrls} />
             )}
           </div>
 
-          {/* Author input (if not yet set) */}
-          {!state.author && (
+          {/* Author input (only on current chapter, only if not yet set) */}
+          {isViewingCurrent && !state.author && (
             <AuthorInput onSubmit={(author) => setState((s) => ({ ...s, author }))} />
           )}
 
-          {/* Decision / edit panel */}
-          {editMode === "idle" && (
+          {/* Decision / edit panel — only on the current (latest) chapter */}
+          {isViewingCurrent && editMode === "idle" && (
             <div className="space-y-3">
               <p className="text-center text-sm font-medium text-slate-500">
                 What would you like to do?
@@ -547,7 +603,7 @@ export default function Home() {
             </div>
           )}
 
-          {editMode === "choose" && (
+          {isViewingCurrent && editMode === "choose" && (
             <div className="space-y-3">
               <p className="text-center text-sm font-medium text-slate-500">
                 How would you like to edit?
@@ -579,7 +635,7 @@ export default function Home() {
             </div>
           )}
 
-          {editMode === "prompt" && (
+          {isViewingCurrent && editMode === "prompt" && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-slate-700">
                 What changes would you like to make?
@@ -613,7 +669,7 @@ export default function Home() {
             </div>
           )}
 
-          {editMode === "direct" && (
+          {isViewingCurrent && editMode === "direct" && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-slate-700">
                 Edit the chapter directly, then save when you are done.
@@ -644,17 +700,19 @@ export default function Home() {
           )}
 
           {/* Footer */}
-          <div className="flex items-center justify-between text-sm px-1 pb-4">
-            <p className="text-amber-600 font-medium">
-              ✨ {state.inputs.length} ideas, all yours
-            </p>
-            <button
-              onClick={handleRestart}
-              className="text-slate-400 hover:text-slate-600 underline"
-            >
-              Start a new story
-            </button>
-          </div>
+          {isViewingCurrent && (
+            <div className="flex items-center justify-between text-sm px-1 pb-4">
+              <p className="text-amber-600 font-medium">
+                ✨ {state.inputs.length} ideas, all yours
+              </p>
+              <button
+                onClick={handleRestart}
+                className="text-slate-400 hover:text-slate-600 underline"
+              >
+                Start a new story
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
