@@ -399,6 +399,10 @@ export default function Home() {
     resetEditState();
   }
 
+  function handleGoToHub() {
+    setScreen("landing");
+  }
+
   function handleRestart() {
     setState(INITIAL_STATE);
     setCurrentPrompt(FIRST_PROMPT);
@@ -412,6 +416,7 @@ export default function Home() {
       <StoryPicker
         onStart={(email: string) => handlePickerStart(email)}
         onResume={handlePickerResume}
+        initialEmail={state.userEmail ?? undefined}
       />
     );
   }
@@ -442,6 +447,16 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
         <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
+
+          {/* Nav */}
+          {state.userEmail && (
+            <button
+              onClick={handleGoToHub}
+              className="text-sm text-amber-700 hover:text-amber-900 font-medium transition"
+            >
+              ← My Stories
+            </button>
+          )}
 
           {/* Image */}
           {state.imageUrl && (
@@ -623,7 +638,16 @@ export default function Home() {
             <p className="text-xs text-amber-500 font-medium">Building Chapter {state.chapterNumber}</p>
           )}
         </div>
-        <p className="text-xs text-slate-400 font-medium">Where your stories hatch.</p>
+        {state.userEmail ? (
+          <button
+            onClick={handleGoToHub}
+            className="text-sm text-amber-700 hover:text-amber-900 font-medium transition"
+          >
+            ← My Stories
+          </button>
+        ) : (
+          <p className="text-xs text-slate-400 font-medium">Where your stories hatch.</p>
+        )}
       </div>
 
       <AnswerLog entries={answerEntries} isLoading={isLoading} />

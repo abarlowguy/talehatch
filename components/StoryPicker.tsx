@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface StorySummary {
   id: string;
@@ -14,18 +14,30 @@ interface Props {
   onStart: (email: string) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onResume: (storyState: Record<string, any>) => void;
+  initialEmail?: string;
 }
 
 type View = "landing" | "hub";
 
-export default function StoryPicker({ onStart, onResume }: Props) {
+export default function StoryPicker({ onStart, onResume, initialEmail }: Props) {
   const [view, setView] = useState<View>("landing");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail ?? "");
   const [emailError, setEmailError] = useState("");
   const [stories, setStories] = useState<StorySummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [resumeLoading, setResumeLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialEmail) return;
+    setLoading(true);
+    fetch(`/api/stories?email=${encodeURIComponent(initialEmail)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: StorySummary[]) => { setStories(data); setView("hub"); })
+      .catch(() => setFetchError("Could not load your stories. Please try again."))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function validateEmail(value: string): boolean {
     return value.includes("@") && value.trim().length > 3;
