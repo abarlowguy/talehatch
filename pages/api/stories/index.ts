@@ -2,7 +2,11 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { initDb, getStoriesByEmail, createStory } from "@/lib/db";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  await initDb();
+  try {
+    await initDb();
+  } catch (err) {
+    return res.status(500).json({ error: "DB init failed", detail: String(err) });
+  }
 
   if (req.method === "GET") {
     const email = req.query.email as string | undefined;
