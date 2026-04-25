@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
+export const config = { maxDuration: 30 };
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { url } = req.query;
   if (!url || typeof url !== "string") {

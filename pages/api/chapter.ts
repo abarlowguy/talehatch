@@ -132,8 +132,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const imageUrls = imagePromptTexts.map((prompt) => {
       const styled = `${prompt}, children's book illustration, watercolour and ink, warm and magical, highly detailed`;
       const seed = Math.floor(Math.random() * 999999);
-      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=flux&seed=${seed}`;
-      return `/api/image-proxy?url=${encodeURIComponent(pollinationsUrl)}`;
+      return `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=turbo&seed=${seed}`;
     });
 
     return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls });

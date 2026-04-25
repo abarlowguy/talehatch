@@ -510,31 +510,13 @@ export default function Home() {
 
           {/* Chapter text with interspersed images */}
           <div className="bg-white rounded-2xl shadow p-8 space-y-8">
-            {(() => {
-              const paragraphs = state.chapter.split("\n\n").filter((p) => p.trim());
-              const images = state.imageUrls;
-              if (images.length === 0) {
-                return (
-                  <p className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">
-                    {state.chapter}
-                  </p>
-                );
-              }
-              const groupSize = Math.ceil(paragraphs.length / images.length);
-              return images.map((imgUrl, i) => {
-                const group = paragraphs.slice(i * groupSize, i * groupSize + groupSize);
-                return (
-                  <div key={i} className="space-y-4">
-                    <ChapterImage src={imgUrl} />
-                    {group.map((para, j) => (
-                      <p key={j} className="font-serif text-lg leading-relaxed text-slate-800">
-                        {para}
-                      </p>
-                    ))}
-                  </div>
-                );
-              });
-            })()}
+            {state.imageUrls.length === 0 ? (
+              <p className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">
+                {state.chapter}
+              </p>
+            ) : (
+              <ChapterBody chapter={state.chapter} imageUrls={state.imageUrls} />
+            )}
           </div>
 
           {/* Author input (if not yet set) */}
@@ -745,45 +727,112 @@ export default function Home() {
   );
 }
 
-function ChapterImage({ src }: { src: string }) {
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState(false);
-  const imgRef = useRef<HTMLImageElement>(null);
+type SlotState = "pending" | "loading" | "done" | "error";
 
-  useEffect(() => {
-    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
-      setLoaded(true);
+function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: string[] }) {
+  const [slots, setSlots] = useState<SlotState[]>(() => imageUrls.map((_, i) => i === 0 ? "loading" : "pending"));
+  const [blobUrls, setBlobUrls] = useState<(string | null)[]>(() => imageUrls.map(() => null));
+
+  const paragraphs = chapter.split("\n\n").filter((p) => p.trim());
+  const groupSize = imageUrls.length > 0 ? Math.ceil(paragraphs.length / imageUrls.length) : paragraphs.length;
+
+  function advance(i: number, result: "done" | "error", blob?: string) {
+    setSlots((prev) => {
+      const next = [...prev];
+      next[i] = result;
+      if (i + 1 < next.length) next[i + 1] = "loading";
+      return next;
+    });
+    if (blob) {
+      setBlobUrls((prev) => { const n = [...prev]; n[i] = blob; return n; });
     }
-  }, []);
+  }
 
   return (
-    <div className="w-full rounded-2xl overflow-hidden shadow-lg bg-slate-200">
-      {!loaded && !error && (
-        <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 text-slate-400 text-sm">
-          <div className="flex gap-1">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+    <>
+      {imageUrls.map((imgUrl, i) => {
+        const group = paragraphs.slice(i * groupSize, (i + 1) * groupSize);
+        const slot = slots[i];
+        const blobSrc = blobUrls[i];
+        return (
+          <div key={i} className="space-y-4">
+            <div className="w-full rounded-2xl overflow-hidden shadow-lg bg-slate-200">
+              {(slot === "pending") && (
+                <div className="w-full aspect-video flex items-center justify-center text-slate-300 text-xs">
+                  Illustration {i + 1} of {imageUrls.length}
+                </div>
+              )}
+              {(slot === "loading") && (
+                <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 text-slate-400 text-sm">
+                  <div className="flex gap-1">
+                    {[0, 1, 2].map((j) => (
+                      <div key={j} className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: `${j * 150}ms` }} />
+                    ))}
+                  </div>
+                  <p>Painting your illustration…</p>
+                </div>
+              )}
+              {slot === "error" && (
+                <div className="w-full aspect-video flex items-center justify-center text-slate-400 text-sm italic">
+                  Illustration unavailable
+                </div>
+              )}
+              {slot === "loading" && (
+                <ImageLoader
+                  src={imgUrl}
+                  onDone={(blob) => advance(i, "done", blob)}
+                  onError={() => advance(i, "error")}
+                />
+              )}
+              {slot === "done" && blobSrc && (
+                <img
+                  src={blobSrc}
+                  alt="Chapter illustration"
+                  className="w-full"
+                  style={{ display: "block" }}
+                />
+              )}
+            </div>
+            {group.map((para, j) => (
+              <p key={j} className="font-serif text-lg leading-relaxed text-slate-800">{para}</p>
             ))}
           </div>
-          <p>Painting your illustration…</p>
-        </div>
-      )}
-      {error && (
-        <div className="w-full aspect-video flex items-center justify-center text-slate-400 text-sm italic">
-          Illustration unavailable
-        </div>
-      )}
-      <img
-        ref={imgRef}
-        src={src}
-        alt="Chapter illustration"
-        style={{ opacity: loaded ? 1 : 0, transition: "opacity 0.7s", display: "block" }}
-        className="w-full"
-        onLoad={() => setLoaded(true)}
-        onError={() => setError(true)}
-      />
-    </div>
+        );
+      })}
+    </>
   );
+}
+
+function ImageLoader({ src, onDone, onError }: { src: string; onDone: (blob: string) => void; onError: () => void }) {
+  useEffect(() => {
+    let cleanedUp = false;
+    const controller = new AbortController();
+    const fetchUrl = src.startsWith("https://image.pollinations.ai/")
+      ? `/api/image-proxy?url=${encodeURIComponent(src)}`
+      : src;
+    fetch(fetchUrl, { signal: controller.signal })
+      .then((res) => {
+        if (cleanedUp) return undefined;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        if (cleanedUp || !blob) return;
+        onDone(URL.createObjectURL(blob));
+      })
+      .catch((err: unknown) => {
+        if (cleanedUp) return;
+        if (err instanceof Error && err.name === "AbortError") return;
+        onError();
+      });
+
+    return () => {
+      cleanedUp = true;
+      controller.abort();
+    };
+  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
 }
 
 function AuthorInput({ onSubmit }: { onSubmit: (name: string) => void }) {
