@@ -42,10 +42,11 @@ export interface StoryRow extends StorySummary {
 
 export async function getStoriesByEmail(email: string): Promise<StorySummary[]> {
   const sql = getDb();
+  const normalised = email.toLowerCase();
   const rows = await sql`
     SELECT id, title, chapter_count, created_at, updated_at
     FROM stories
-    WHERE user_email = ${email}
+    WHERE LOWER(user_email) = ${normalised}
     ORDER BY updated_at DESC
   `;
   return rows as unknown as StorySummary[];
@@ -70,15 +71,16 @@ export async function createStory(
   state: Record<string, any>
 ): Promise<void> {
   const sql = getDb();
+  const normalised = email.toLowerCase();
   const now = new Date().toISOString();
   await sql`
     INSERT INTO users (email, created_at)
-    VALUES (${email}, ${now})
+    VALUES (${normalised}, ${now})
     ON CONFLICT (email) DO NOTHING
   `;
   await sql`
     INSERT INTO stories (id, user_email, title, chapter_count, created_at, updated_at, state)
-    VALUES (${id}, ${email}, ${title}, 0, ${now}, ${now}, ${JSON.stringify(state)})
+    VALUES (${id}, ${normalised}, ${title}, 0, ${now}, ${now}, ${JSON.stringify(state)})
   `;
 }
 
