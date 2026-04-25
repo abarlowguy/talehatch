@@ -1,13 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getStoriesByEmail, createStory } from "@/lib/db";
+import { initDb, getStoriesByEmail, createStory } from "@/lib/db";
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await initDb();
+
   if (req.method === "GET") {
     const email = req.query.email as string | undefined;
     if (!email || !email.includes("@")) {
       return res.status(400).json({ error: "Invalid email" });
     }
-    const stories = getStoriesByEmail(email);
+    const stories = await getStoriesByEmail(email);
     return res.status(200).json(stories);
   }
 
@@ -24,7 +26,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    createStory(email, id, title, state);
+    await createStory(email, id, title, state);
     return res.status(200).json({ id });
   }
 

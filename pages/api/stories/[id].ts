@@ -1,11 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getStory, updateStory } from "@/lib/db";
+import { initDb, getStory, updateStory } from "@/lib/db";
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  await initDb();
   const { id } = req.query as { id: string };
 
   if (req.method === "GET") {
-    const story = getStory(id);
+    const story = await getStory(id);
     if (!story) {
       return res.status(404).json({ error: "Story not found" });
     }
@@ -24,7 +25,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    updateStory(id, title, chapterCount, state);
+    await updateStory(id, title, chapterCount, state);
     return res.status(200).json({ ok: true });
   }
 
