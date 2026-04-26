@@ -49,6 +49,12 @@ describe("buildRegenPrompt", () => {
     expect(result).toMatch(/^original scene/);
     expect(result).toContain("graphite");
   });
+
+  it("treats whitespace-only user text as empty", () => {
+    const artStyle = buildStyleSuffix("older", "");
+    const result = buildRegenPrompt("   ", "original scene", artStyle);
+    expect(result).toMatch(/^original scene/);
+  });
 });
 
 describe("buildRegenUrl", () => {

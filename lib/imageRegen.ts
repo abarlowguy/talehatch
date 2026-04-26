@@ -17,7 +17,7 @@ const GENRE_STYLE_MODIFIER: Record<string, string> = {
 };
 
 export function buildStyleSuffix(ageRange: AgeRange, genre: string): string {
-  const base = AGE_BASE_STYLE[ageRange] ?? AGE_BASE_STYLE.older;
+  const base = AGE_BASE_STYLE[ageRange];
   const modifier = GENRE_STYLE_MODIFIER[genre.toLowerCase()] ?? "";
   return modifier
     ? `, ${base}, ${modifier}, highly detailed`
