@@ -144,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=turbo&seed=${seed}`;
     });
 
-    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls, storyTitle });
+    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls, imagePrompts: imagePromptTexts, storyTitle });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Could not generate chapter. Try again." });

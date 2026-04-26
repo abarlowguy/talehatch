@@ -78,7 +78,7 @@ export async function generateChapter(req: ChapterRequest): Promise<ChapterRespo
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    return { chapterTitle: "", chapter: "", cliffhanger: "", imageUrls: [], error: "Could not generate chapter. Try again." };
+    return { chapterTitle: "", chapter: "", cliffhanger: "", imageUrls: [], imagePrompts: [], error: "Could not generate chapter. Try again." };
   }
   return res.json();
 }
