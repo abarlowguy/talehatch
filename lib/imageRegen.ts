@@ -1,13 +1,36 @@
-export const STYLE_SUFFIX = ", children's book illustration, watercolour and ink, warm and magical, highly detailed";
+import type { AgeRange } from "@/lib/prompts";
 
-export function buildRegenPrompt(userText: string, originalPrompt: string): string {
-  const prefix = userText.trim() ? `${userText.trim()} — ` : "";
-  return `${prefix}${originalPrompt}${STYLE_SUFFIX}`;
+const AGE_BASE_STYLE: Record<AgeRange, string> = {
+  tiny: "soft pastel picture book illustration, rounded shapes, gentle watercolour wash, warm and cozy",
+  young: "bright gouache illustration, bold outlines, flat colour, lively children's adventure book",
+  middle: "detailed ink and watercolour, dynamic composition, middle-grade adventure illustration",
+  older: "dramatic graphite and ink, detailed crosshatching, cinematic lighting, young adult novel illustration",
+};
+
+const GENRE_STYLE_MODIFIER: Record<string, string> = {
+  fantasy: "enchanted magical world, glowing runes, ethereal mist",
+  "sci-fi": "sleek metallic surfaces, neon accents, futuristic technology",
+  mystery: "moody shadows, candlelit atmosphere, noir-inspired palette",
+  adventure: "lush natural environments, dynamic action, golden hour lighting",
+  cozy: "warm hearth light, soft textures, intimate homey atmosphere",
+  historical: "period-accurate details, aged parchment tones, classical composition",
+};
+
+export function buildStyleSuffix(ageRange: AgeRange, genre: string): string {
+  const base = AGE_BASE_STYLE[ageRange] ?? AGE_BASE_STYLE.older;
+  const modifier = GENRE_STYLE_MODIFIER[genre.toLowerCase()] ?? "";
+  return modifier
+    ? `, ${base}, ${modifier}, highly detailed`
+    : `, ${base}, highly detailed`;
 }
 
-export function buildRegenUrl(userText: string, originalPrompt: string): string {
-  const prompt = buildRegenPrompt(userText, originalPrompt);
+export function buildRegenPrompt(userText: string, originalPrompt: string, artStyle: string): string {
+  const prefix = userText.trim() ? `${userText.trim()} — ` : "";
+  return `${prefix}${originalPrompt}${artStyle}`;
+}
+
+export function buildRegenUrl(userText: string, originalPrompt: string, artStyle: string): string {
+  const prompt = buildRegenPrompt(userText, originalPrompt, artStyle);
   const seed = Math.floor(Math.random() * 999999);
-  const encodedPrompt = encodeURIComponent(prompt);
-  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=512&model=turbo&seed=${seed}`;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=512&model=turbo&seed=${seed}`;
 }
