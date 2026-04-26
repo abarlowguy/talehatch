@@ -394,47 +394,23 @@ export default function Home() {
     setIsLoading(false);
   }
 
-  async function handleSkip() {
-    setIsLoading(true);
-    const previousCliffhanger =
-      state.savedChapters.length > 0
-        ? state.savedChapters[state.savedChapters.length - 1].cliffhanger
-        : undefined;
-
-    const chapterHistory: ChapterHistoryEntry[] = state.savedChapters.map((ch) => ({
-      chapterNumber: ch.chapterNumber,
-      title: ch.title,
-      cliffhanger: ch.cliffhanger,
-    }));
+  function handleSkip() {
+    if (isLoading) return;
 
     const nextStep = state.step + 1;
-    setState((s) => ({ ...s, step: nextStep, inputs: [...s.inputs, ""] }));
-    setCurrentPrompt("…");
+    const tier = AGE_RANGE_CONFIG[state.ageRange];
+    const shouldBuild = nextStep >= tier.maxQuestions;
+    const fallbacks = tier.fallbackPrompts;
 
-    try {
-      const res = await generateStorySegment({
-        story: state.story,
-        input: "__skip__",
-        entities: state.entities,
-        mode: "guided",
-        step: nextStep,
-        coveredElements: state.coveredElements,
-        questionCount: nextStep,
-        chapterNumber: state.chapterNumber,
-        previousCliffhanger,
-        conversationHistory: state.promptHistory.map((p, i) => ({
-          prompt: p,
-          answer: state.inputs[i] ?? "",
-        })),
-        ageRange: state.ageRange,
-        seussMode: state.seussMode,
-        chapterHistory,
-      });
+    setState((s) => ({
+      ...s,
+      step: nextStep,
+      inputs: [...s.inputs, ""],
+      mode: shouldBuild ? "building" : s.mode,
+    }));
 
-      if (res.nextPrompt) setCurrentPrompt(res.nextPrompt);
-      if (res.readyToWrite) setState((s) => ({ ...s, mode: "building" }));
-    } finally {
-      setIsLoading(false);
+    if (!shouldBuild) {
+      setCurrentPrompt(fallbacks[nextStep] ?? fallbacks[fallbacks.length - 1]);
     }
   }
 

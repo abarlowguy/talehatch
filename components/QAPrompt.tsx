@@ -202,7 +202,8 @@ export default function QAPrompt({
           </button>
           <button
             onClick={onSkip}
-            className="text-sm font-medium text-slate-500 hover:text-slate-800 transition"
+            disabled={isLoading}
+            className="text-sm font-medium text-slate-500 hover:text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
             ⏭ Skip
           </button>
