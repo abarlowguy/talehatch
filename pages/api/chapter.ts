@@ -15,7 +15,8 @@ function buildSystemPrompt(
   ageRange: AgeRange,
   previousCliffhanger?: string,
   isFinalChapter?: boolean,
-  storyMoral?: string
+  storyMoral?: string,
+  seussMode?: boolean
 ): string {
   const tier = AGE_RANGE_CONFIG[ageRange];
   const isFirstChapter = chapterNumber === 1;
@@ -58,7 +59,11 @@ function buildSystemPrompt(
 - The cliffhanger should feel earned by the events of the chapter, not dropped in from nowhere.
 - It must leave one urgent question unanswered.`;
 
-  return `You are writing Chapter ${chapterNumber} of a story for ${tier.readerDescription}.${continuationContext}
+  const seussBlock = seussMode
+    ? `\nSTYLE OVERRIDE — DR. SEUSS MODE:\nWrite this chapter as rhyming, bouncy Seuss-style verse. Use AABB or AABBA rhyme schemes. Short punchy lines. Made-up fun words are encouraged. The story should feel like a picture book read-aloud. Keep all content age-appropriate and joyful.\n`
+    : "";
+
+  return `You are writing Chapter ${chapterNumber} of a story for ${tier.readerDescription}.${continuationContext}${seussBlock}
 
 You have been given the child's answers to guided prompts. These answers contain ALL the raw material for the chapter. Transform them into a vivid, engaging chapter — roughly ${tier.chapterWords} words.
 
@@ -105,6 +110,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     isFinalChapter = false,
     storyMoral = "",
     characterDescription: incomingCharacterDescription = "",
+    seussMode = false,
   } = req.body as {
     inputs: string[];
     story: string;
@@ -116,6 +122,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     isFinalChapter?: boolean;
     storyMoral?: string;
     characterDescription?: string;
+    seussMode?: boolean;
   };
 
   if (!inputs || inputs.length === 0) {
@@ -137,7 +144,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4000,
-      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger, isFinalChapter, storyMoral),
+      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger, isFinalChapter, storyMoral, seussMode),
       messages: [{ role: "user", content: userPrompt }],
     });
 

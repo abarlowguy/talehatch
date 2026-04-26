@@ -9,7 +9,8 @@ function buildSystemPrompt(
   chapterNumber: number,
   ageRange: AgeRange,
   previousCliffhanger?: string,
-  chapterHistory?: Array<{ chapterNumber: number; title: string; cliffhanger: string }>
+  chapterHistory?: Array<{ chapterNumber: number; title: string; cliffhanger: string }>,
+  seussMode?: boolean
 ): string {
   const tier = AGE_RANGE_CONFIG[ageRange];
 
@@ -34,7 +35,11 @@ function buildSystemPrompt(
 
   const readySignal = tier.readyElements.join(", ");
 
-  return `You are a creative story interviewer helping build a story for ${tier.readerDescription}.${chapterContext}${historyContext}
+  const seussBlock = seussMode
+    ? "\nSTYLE — DR. SEUSS MODE: Keep your questions playful, silly, and short. Use rhymes or fun made-up words in your questions when it fits. Match the whimsical energy of a Seuss story.\n"
+    : "";
+
+  return `You are a creative story interviewer helping build a story for ${tier.readerDescription}.${chapterContext}${historyContext}${seussBlock}
 
 YOUR ONLY JOB IS TO ASK THE NEXT GREAT QUESTION.
 
@@ -116,6 +121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     conversationHistory = [],
     ageRange = "older",
     chapterHistory = [],
+    seussMode = false,
   } = req.body as {
     story: string;
     input: string;
@@ -127,6 +133,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     conversationHistory?: Array<{ prompt: string; answer: string }>;
     ageRange?: AgeRange;
     chapterHistory?: Array<{ chapterNumber: number; title: string; cliffhanger: string }>;
+    seussMode?: boolean;
   };
 
   if (!input) {
@@ -154,7 +161,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 600,
-      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger, chapterHistory),
+      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger, chapterHistory, seussMode),
       messages: [{ role: "user", content: userPrompt }],
     });
 
