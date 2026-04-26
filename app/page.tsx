@@ -996,29 +996,46 @@ function ChapterBody({
 function ImageLoader({ src, onDone, onError }: { src: string; onDone: (blob: string) => void; onError: () => void }) {
   useEffect(() => {
     let cleanedUp = false;
-    const controller = new AbortController();
+    let retries = 0;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let currentController: AbortController | null = null;
+
     const fetchUrl = src.startsWith("https://image.pollinations.ai/")
       ? `/api/image-proxy?url=${encodeURIComponent(src)}`
       : src;
-    fetch(fetchUrl, { signal: controller.signal })
-      .then((res) => {
-        if (cleanedUp) return undefined;
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.blob();
-      })
-      .then((blob) => {
-        if (cleanedUp || !blob) return;
-        onDone(URL.createObjectURL(blob));
-      })
-      .catch((err: unknown) => {
-        if (cleanedUp) return;
-        if (err instanceof Error && err.name === "AbortError") return;
-        onError();
-      });
+
+    function attempt() {
+      currentController = new AbortController();
+      fetch(fetchUrl, { signal: currentController.signal })
+        .then((res) => {
+          if (cleanedUp) return undefined;
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.blob();
+        })
+        .then((blob) => {
+          if (cleanedUp || !blob) return;
+          onDone(URL.createObjectURL(blob));
+        })
+        .catch((err: unknown) => {
+          if (cleanedUp) return;
+          if (err instanceof Error && err.name === "AbortError") return;
+          if (retries < MAX_RETRIES) {
+            retries++;
+            retryTimer = setTimeout(() => { if (!cleanedUp) attempt(); }, RETRY_DELAY_MS);
+          } else {
+            onError();
+          }
+        });
+    }
+
+    attempt();
 
     return () => {
       cleanedUp = true;
-      controller.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+      currentController?.abort();
     };
   }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
 
