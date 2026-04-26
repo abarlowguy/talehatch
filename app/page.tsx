@@ -24,6 +24,7 @@ import {
   editChapter,
   type ChapterRecord,
 } from "@/lib/storyBuilder";
+import { buildRegenUrl } from "@/lib/imageRegen";
 
 type Mode = "guided" | "building" | "chapter";
 type Screen = "landing" | "age-select" | "story";
@@ -582,7 +583,13 @@ export default function Home() {
                 {displayText}
               </p>
             ) : (
-              <ChapterBody key={currentIdx} chapter={displayText} imageUrls={displayImageUrls} />
+              <ChapterBody
+                key={currentIdx}
+                chapter={displayText}
+                imageUrls={displayImageUrls}
+                regenPrompts={[]}
+                onImageChange={() => {}}
+              />
             )}
           </div>
 
@@ -798,10 +805,22 @@ export default function Home() {
 
 type SlotState = "pending" | "loading" | "done" | "error";
 
-function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: string[] }) {
+function ChapterBody({
+  chapter,
+  imageUrls,
+  regenPrompts,
+  onImageChange,
+}: {
+  chapter: string;
+  imageUrls: string[];
+  regenPrompts: string[];
+  onImageChange: (slotIdx: number, newUrl: string) => void;
+}) {
   const [slots, setSlots] = useState<SlotState[]>(() => imageUrls.map((_, i) => i === 0 ? "loading" : "pending"));
   const [blobUrls, setBlobUrls] = useState<(string | null)[]>(() => imageUrls.map(() => null));
   const [urls, setUrls] = useState<string[]>(() => [...imageUrls]);
+  const [openPromptIdx, setOpenPromptIdx] = useState<number | null>(null);
+  const [promptText, setPromptText] = useState("");
 
   const paragraphs = chapter.split("\n\n").filter((p) => p.trim());
   const groupSize = imageUrls.length > 0 ? Math.ceil(paragraphs.length / imageUrls.length) : paragraphs.length;
@@ -824,6 +843,18 @@ function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: strin
     setUrls((prev) => { const n = [...prev]; n[i] = newUrl; return n; });
     setBlobUrls((prev) => { const n = [...prev]; n[i] = null; return n; });
     setSlots((prev) => { const n = [...prev]; n[i] = "loading"; return n; });
+    onImageChange(i, newUrl);
+  }
+
+  function describeRegen(i: number) {
+    if (!promptText.trim()) return;
+    const newUrl = buildRegenUrl(promptText.trim(), regenPrompts[i] ?? "");
+    setUrls((prev) => { const n = [...prev]; n[i] = newUrl; return n; });
+    setBlobUrls((prev) => { const n = [...prev]; n[i] = null; return n; });
+    setSlots((prev) => { const n = [...prev]; n[i] = "loading"; return n; });
+    onImageChange(i, newUrl);
+    setOpenPromptIdx(null);
+    setPromptText("");
   }
 
   return (
@@ -876,15 +907,46 @@ function ChapterBody({ chapter, imageUrls }: { chapter: string; imageUrls: strin
                     className="w-full"
                     style={{ display: "block" }}
                   />
-                  <button
-                    onClick={() => regenerate(i)}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 rounded-lg bg-black/40 hover:bg-black/60 text-white text-xs font-medium"
-                  >
-                    ↻ New illustration
-                  </button>
+                  <div className="absolute bottom-2 right-2 flex gap-1.5">
+                    <button
+                      onClick={() => regenerate(i)}
+                      className="px-2.5 py-1 rounded-lg bg-black/50 hover:bg-black/70 text-white text-xs font-semibold transition"
+                    >
+                      ↻ Random
+                    </button>
+                    <button
+                      onClick={() => setOpenPromptIdx(openPromptIdx === i ? null : i)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-400/90 hover:bg-amber-500 text-amber-900 text-xs font-semibold transition"
+                    >
+                      🎨 Describe it
+                    </button>
+                  </div>
                 </>
               )}
             </div>
+            {openPromptIdx === i && (
+              <div className="bg-white border border-amber-300 rounded-xl p-3 space-y-2 shadow-sm">
+                <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Describe the change</p>
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    value={promptText}
+                    onChange={(e) => setPromptText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && describeRegen(i)}
+                    placeholder="e.g. make it stormy and darker…"
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  />
+                  <button
+                    onClick={() => describeRegen(i)}
+                    disabled={!promptText.trim()}
+                    className="px-3 py-2 rounded-lg bg-amber-400 hover:bg-amber-500 text-amber-900 text-sm font-semibold transition disabled:opacity-40"
+                  >
+                    ✨ Redraw
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400">The story's original scene will be used as context — just describe what to change.</p>
+              </div>
+            )}
             {group.map((para, j) => (
               <p key={j} className="font-serif text-lg leading-relaxed text-slate-800">{para}</p>
             ))}
