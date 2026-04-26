@@ -44,6 +44,7 @@ interface AppState {
   cliffhanger: string;
   imageUrls: string[];
   imagePrompts: string[];
+  artStyle: string;
   // Across chapters
   storyTitle: string;
   author: string;
@@ -68,6 +69,7 @@ const INITIAL_STATE: AppState = {
   cliffhanger: "",
   imageUrls: [],
   imagePrompts: [],
+  artStyle: "",
   storyTitle: "",
   author: "",
   savedChapters: [],
@@ -108,6 +110,7 @@ function serializeState(state: AppState): Record<string, unknown> {
     cliffhanger: state.cliffhanger,
     imageUrls: state.imageUrls,
     imagePrompts: state.imagePrompts,
+    artStyle: state.artStyle,
     storyTitle: state.storyTitle,
     author: state.author,
     savedChapters: state.savedChapters,
@@ -183,6 +186,7 @@ export default function Home() {
       chapterNumber: state.chapterNumber,
       previousCliffhanger,
       ageRange: state.ageRange,
+      artStyle: state.artStyle,
     }).then((result) => {
       clearInterval(interval);
       if (result.error) {
@@ -199,6 +203,7 @@ export default function Home() {
           cliffhanger: result.cliffhanger,
           imageUrls: result.imageUrls ?? [],
           imagePrompts: result.imagePrompts ?? [],
+          artStyle: result.artStyle ?? s.artStyle,
         };
         // Auto-save fire-and-forget
         autoSave(next);
@@ -277,6 +282,7 @@ export default function Home() {
       cliffhanger: (savedState.cliffhanger as string) ?? "",
       imageUrls: (savedState.imageUrls as string[]) ?? (savedState.imageUrl ? [savedState.imageUrl as string] : []),
       imagePrompts: (savedState.imagePrompts as string[]) ?? [],
+      artStyle: (savedState.artStyle as string) ?? "",
       storyTitle: (savedState.storyTitle as string) ?? "",
       author: (savedState.author as string) ?? "",
       savedChapters: (savedState.savedChapters as ChapterRecord[]) ?? [],
@@ -428,6 +434,8 @@ export default function Home() {
       savedChapters: [...s.savedChapters, saved],
       storyId: s.storyId,
       userEmail: s.userEmail,
+      ageRange: s.ageRange,
+      artStyle: s.artStyle,
     }));
 
     setCurrentPrompt(NEXT_CHAPTER_FIRST_PROMPT);
@@ -591,6 +599,7 @@ export default function Home() {
                 chapter={displayText}
                 imageUrls={displayImageUrls}
                 regenPrompts={displayImagePrompts}
+                artStyle={state.artStyle}
                 onImageChange={(slotIdx, newUrl) => {
                   if (isViewingCurrent) {
                     setState((s) => {
@@ -834,11 +843,13 @@ function ChapterBody({
   chapter,
   imageUrls,
   regenPrompts,
+  artStyle,
   onImageChange,
 }: {
   chapter: string;
   imageUrls: string[];
   regenPrompts: string[];
+  artStyle: string;
   onImageChange: (slotIdx: number, newUrl: string) => void;
 }) {
   const [slots, setSlots] = useState<SlotState[]>(() => imageUrls.map((_, i) => i === 0 ? "loading" : "pending"));
@@ -873,7 +884,7 @@ function ChapterBody({
 
   function describeRegen(i: number) {
     if (!promptText.trim()) return;
-    const newUrl = buildRegenUrl(promptText.trim(), regenPrompts[i] ?? "");
+    const newUrl = buildRegenUrl(promptText.trim(), regenPrompts[i] ?? "", artStyle);
     setUrls((prev) => { const n = [...prev]; n[i] = newUrl; return n; });
     setBlobUrls((prev) => { const n = [...prev]; n[i] = null; return n; });
     setSlots((prev) => { const n = [...prev]; n[i] = "loading"; return n; });
