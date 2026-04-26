@@ -27,6 +27,7 @@ export interface ChapterRequest {
   chapterNumber?: number;
   previousCliffhanger?: string;
   ageRange?: string;
+  artStyle?: string;
 }
 
 export interface ChapterResponse {
@@ -36,6 +37,7 @@ export interface ChapterResponse {
   imageUrls: string[];
   imagePrompts: string[];
   storyTitle?: string;
+  artStyle?: string;
   error?: string;
 }
 
@@ -57,6 +59,7 @@ export interface ChapterRecord {
   imageUrls: string[];
   imagePrompts: string[];
   cliffhanger: string;
+  artStyle?: string;
 }
 
 export async function generateStorySegment(
@@ -78,7 +81,7 @@ export async function generateChapter(req: ChapterRequest): Promise<ChapterRespo
     body: JSON.stringify(req),
   });
   if (!res.ok) {
-    return { chapterTitle: "", chapter: "", cliffhanger: "", imageUrls: [], imagePrompts: [], error: "Could not generate chapter. Try again." };
+    return { chapterTitle: "", chapter: "", cliffhanger: "", imageUrls: [], imagePrompts: [], artStyle: undefined, error: "Could not generate chapter. Try again." };
   }
   return res.json();
 }
