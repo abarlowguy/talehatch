@@ -34,6 +34,7 @@ export interface ChapterResponse {
   chapter: string;
   cliffhanger: string;
   imageUrls: string[];
+  imagePrompts: string[];
   storyTitle?: string;
   error?: string;
 }
@@ -54,6 +55,7 @@ export interface ChapterRecord {
   title: string;
   chapter: string;
   imageUrls: string[];
+  imagePrompts: string[];
   cliffhanger: string;
 }
 
