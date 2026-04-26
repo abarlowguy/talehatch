@@ -915,7 +915,7 @@ function ChapterBody({
                       ↻ Random
                     </button>
                     <button
-                      onClick={() => setOpenPromptIdx(openPromptIdx === i ? null : i)}
+                      onClick={() => { if (openPromptIdx === i) { setOpenPromptIdx(null); } else { setOpenPromptIdx(i); setPromptText(""); } }}
                       className="px-2.5 py-1 rounded-lg bg-amber-400/90 hover:bg-amber-500 text-amber-900 text-xs font-semibold transition"
                     >
                       🎨 Describe it
