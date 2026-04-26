@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface QAPromptProps {
   prompt: string;
@@ -46,6 +46,15 @@ export default function QAPrompt({
   const [currentPrompt, setCurrentPrompt] = useState(prompt);
   const [moralSaved, setMoralSaved] = useState(false);
 
+  useEffect(() => {
+    setCurrentPrompt(prompt);
+    setAnswer("");
+    setHints([]);
+    setHintsOpen(false);
+    setRephraseUsed(false);
+    setRephraseLoading(false);
+  }, [prompt]);
+
   const showFinalChapterOption = chapterNumber >= 2 && questionIndex === 0;
 
   async function handleToggleHints() {
@@ -58,10 +67,15 @@ export default function QAPrompt({
       return;
     }
     setHintsLoading(true);
-    const result = await onFetchHints();
-    setHints(result);
-    setHintsLoading(false);
-    setHintsOpen(true);
+    try {
+      const result = await onFetchHints();
+      setHints(result);
+      setHintsOpen(true);
+    } catch {
+      // leave hintsOpen false so user can retry
+    } finally {
+      setHintsLoading(false);
+    }
   }
 
   async function handleToggleMoralHints() {
@@ -74,21 +88,31 @@ export default function QAPrompt({
       return;
     }
     setMoralHintsLoading(true);
-    const result = await onFetchMoralHints();
-    setMoralHints(result);
-    setMoralHintsLoading(false);
-    setMoralHintsOpen(true);
+    try {
+      const result = await onFetchMoralHints();
+      setMoralHints(result);
+      setMoralHintsOpen(true);
+    } catch {
+      // leave moralHintsOpen false so user can retry
+    } finally {
+      setMoralHintsLoading(false);
+    }
   }
 
   async function handleRephrase() {
     if (rephraseUsed || rephraseLoading) return;
     setRephraseLoading(true);
-    const newPrompt = await onRephrase();
-    setCurrentPrompt(newPrompt);
-    setRephraseUsed(true);
-    setRephraseLoading(false);
-    setHints([]);
-    setHintsOpen(false);
+    try {
+      const newPrompt = await onRephrase();
+      setCurrentPrompt(newPrompt);
+      setRephraseUsed(true);
+      setHints([]);
+      setHintsOpen(false);
+    } catch {
+      // rephraseUsed stays false — user can retry
+    } finally {
+      setRephraseLoading(false);
+    }
   }
 
   function handleSubmit() {
