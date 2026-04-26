@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import Anthropic from "@anthropic-ai/sdk";
 import { AGE_RANGE_CONFIG } from "@/lib/prompts";
 import type { AgeRange } from "@/lib/prompts";
-import { STYLE_SUFFIX } from "@/lib/imageRegen";
+import { buildStyleSuffix } from "@/lib/imageRegen";
 
 export const config = {
   maxDuration: 60,
@@ -17,6 +17,10 @@ function buildSystemPrompt(
 ): string {
   const tier = AGE_RANGE_CONFIG[ageRange];
   const isFirstChapter = chapterNumber === 1;
+
+  const genreSection = isFirstChapter
+    ? `GENRE:\n[One word identifying the story genre. Choose the closest match: fantasy, sci-fi, mystery, adventure, cozy, historical, or other]\n\n`
+    : "";
 
   const storyTitleSection = isFirstChapter
     ? `STORY_TITLE:\n[A short, evocative title for the whole story — 2–5 words. Not the chapter title. Something that captures the spirit of the adventure.]\n\n`
@@ -58,7 +62,7 @@ CLIFFHANGER RULES (CRITICAL):
 
 Return your response in EXACTLY this format:
 
-${storyTitleSection}TITLE:
+${genreSection}${storyTitleSection}TITLE:
 [A short, evocative chapter title — not "Chapter ${chapterNumber}", just the title]
 
 CHAPTER:
@@ -81,13 +85,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { inputs, story, entities, chapterNumber = 1, previousCliffhanger, ageRange = "older" } = req.body as {
+  const {
+    inputs, story, entities, chapterNumber = 1, previousCliffhanger,
+    ageRange = "older", artStyle: incomingArtStyle,
+  } = req.body as {
     inputs: string[];
     story: string;
     entities: string[];
     chapterNumber?: number;
     previousCliffhanger?: string;
     ageRange?: AgeRange;
+    artStyle?: string;
   };
 
   if (!inputs || inputs.length === 0) {
@@ -120,6 +128,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : null;
     const storyTitle = storyTitleMatch ? storyTitleMatch[1].trim() : undefined;
 
+    const genreMatch = chapterNumber === 1
+      ? raw.match(/^GENRE:\s*(.+)$/im)
+      : null;
+    const genre = genreMatch ? genreMatch[1].trim().toLowerCase() : "";
+    const artStyle = chapterNumber === 1
+      ? buildStyleSuffix(ageRange, genre)
+      : (incomingArtStyle ?? buildStyleSuffix(ageRange, ""));
+
     const titleMatch = raw.match(/TITLE:\s*([\s\S]*?)(?=CHAPTER:|$)/i);
     const chapterMatch = raw.match(/CHAPTER:\s*([\s\S]*?)(?=CLIFFHANGER:|IMAGE_PROMPTS:|$)/i);
     const cliffhangerMatch = raw.match(/CLIFFHANGER:\s*([\s\S]*?)(?=IMAGE_PROMPTS:|$)/i);
@@ -140,12 +156,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : ["A child in a mysterious landscape, dramatic lighting, kid-friendly storybook art style"];
 
     const imageUrls = imagePromptTexts.map((prompt) => {
-      const styled = `${prompt}${STYLE_SUFFIX}`;
+      const styled = `${prompt}${artStyle}`;
       const seed = Math.floor(Math.random() * 999999);
       return `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=turbo&seed=${seed}`;
     });
 
-    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls, imagePrompts: imagePromptTexts, storyTitle });
+    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls, imagePrompts: imagePromptTexts, storyTitle, artStyle });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Could not generate chapter. Try again." });
