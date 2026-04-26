@@ -1,6 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+
+interface SpeechRecognitionEvent {
+  results: SpeechRecognitionResultList;
+}
+interface SpeechRecognitionInstance extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: ((e: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+function getSpeechRecognition(): SpeechRecognitionConstructor | null {
+  const w = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
 
 interface QAPromptProps {
   prompt: string;
@@ -45,6 +68,14 @@ export default function QAPrompt({
   const [rephraseLoading, setRephraseLoading] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState(prompt);
   const [moralSaved, setMoralSaved] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const committedAnswerRef = useRef("");
+
+  useEffect(() => {
+    setSpeechSupported(getSpeechRecognition() !== null);
+  }, []);
 
   useEffect(() => {
     setCurrentPrompt(prompt);
@@ -53,7 +84,39 @@ export default function QAPrompt({
     setHintsOpen(false);
     setRephraseUsed(false);
     setRephraseLoading(false);
+    recognitionRef.current?.stop();
+    setIsListening(false);
   }, [prompt]);
+
+  function toggleListening() {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const SR = getSpeechRecognition();
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    committedAnswerRef.current = answer;
+    recognition.onresult = (e: SpeechRecognitionEvent) => {
+      let interim = "";
+      let final = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript;
+        else interim += r[0].transcript;
+      }
+      setAnswer(committedAnswerRef.current + (final || interim));
+      if (final) committedAnswerRef.current += final;
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }
 
   const showFinalChapterOption = chapterNumber >= 2 && questionIndex === 0;
 
@@ -148,20 +211,32 @@ export default function QAPrompt({
         </button>
       </div>
 
-      {/* Answer input */}
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSubmit();
-          }
-        }}
-        placeholder="Type your answer..."
-        rows={3}
-        className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm resize-none focus:outline-none focus:border-white/40"
-      />
+      {/* Answer input + mic button */}
+      <div className="relative">
+        <textarea
+          value={answer}
+          onChange={(e) => { setAnswer(e.target.value); committedAnswerRef.current = e.target.value; }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
+          placeholder="Type your answer..."
+          rows={3}
+          className={`w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm resize-none focus:outline-none focus:border-white/40 ${speechSupported ? "pr-12" : ""}`}
+        />
+        {speechSupported && (
+          <button
+            type="button"
+            onClick={toggleListening}
+            title={isListening ? "Stop listening" : "Speak your answer"}
+            className={`absolute bottom-3 right-3 text-lg leading-none transition-opacity ${isListening ? "opacity-100 animate-pulse" : "opacity-40 hover:opacity-80"}`}
+          >
+            {isListening ? "🔴" : "🎤"}
+          </button>
+        )}
+      </div>
 
       {/* Need ideas */}
       <div>
