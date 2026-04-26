@@ -44,3 +44,6 @@ next-env.d.ts
 stories.db
 .superpowers/
 .worktrees/
+
+# Claude Code session logs (not part of project)
+CC-Session-Logs/
