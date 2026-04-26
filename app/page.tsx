@@ -42,6 +42,7 @@ interface AppState {
   chapter: string;
   cliffhanger: string;
   imageUrls: string[];
+  imagePrompts: string[];
   // Across chapters
   storyTitle: string;
   author: string;
@@ -65,6 +66,7 @@ const INITIAL_STATE: AppState = {
   chapter: "",
   cliffhanger: "",
   imageUrls: [],
+  imagePrompts: [],
   storyTitle: "",
   author: "",
   savedChapters: [],
@@ -104,6 +106,7 @@ function serializeState(state: AppState): Record<string, unknown> {
     chapter: state.chapter,
     cliffhanger: state.cliffhanger,
     imageUrls: state.imageUrls,
+    imagePrompts: state.imagePrompts,
     storyTitle: state.storyTitle,
     author: state.author,
     savedChapters: state.savedChapters,
@@ -194,6 +197,7 @@ export default function Home() {
           chapter: result.chapter,
           cliffhanger: result.cliffhanger,
           imageUrls: result.imageUrls ?? [],
+          imagePrompts: result.imagePrompts ?? [],
         };
         // Auto-save fire-and-forget
         autoSave(next);
@@ -271,6 +275,7 @@ export default function Home() {
       chapter: (savedState.chapter as string) ?? "",
       cliffhanger: (savedState.cliffhanger as string) ?? "",
       imageUrls: (savedState.imageUrls as string[]) ?? (savedState.imageUrl ? [savedState.imageUrl as string] : []),
+      imagePrompts: (savedState.imagePrompts as string[]) ?? [],
       storyTitle: (savedState.storyTitle as string) ?? "",
       author: (savedState.author as string) ?? "",
       savedChapters: (savedState.savedChapters as ChapterRecord[]) ?? [],
@@ -410,6 +415,7 @@ export default function Home() {
       title: state.chapterTitle,
       chapter: state.chapter,
       imageUrls: state.imageUrls,
+      imagePrompts: state.imagePrompts,
       cliffhanger: state.cliffhanger,
     };
 
