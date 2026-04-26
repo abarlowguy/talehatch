@@ -854,7 +854,7 @@ function ChapterBody({
     setSlots((prev) => {
       const next = [...prev];
       next[i] = result;
-      if (i + 1 < next.length) next[i + 1] = "loading";
+      if (i + 1 < next.length && prev[i + 1] === "pending") next[i + 1] = "loading";
       return next;
     });
     if (blob) {
