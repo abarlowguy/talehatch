@@ -518,6 +518,9 @@ export default function Home() {
     const displayImageUrls = isViewingCurrent
       ? state.imageUrls
       : (state.savedChapters[currentIdx].imageUrls ?? []);
+    const displayImagePrompts = isViewingCurrent
+      ? state.imagePrompts
+      : (state.savedChapters[currentIdx].imagePrompts ?? []);
 
     function goToPrev() {
       const newIdx = currentIdx - 1;
@@ -587,8 +590,30 @@ export default function Home() {
                 key={currentIdx}
                 chapter={displayText}
                 imageUrls={displayImageUrls}
-                regenPrompts={[]}
-                onImageChange={() => {}}
+                regenPrompts={displayImagePrompts}
+                onImageChange={(slotIdx, newUrl) => {
+                  if (isViewingCurrent) {
+                    setState((s) => {
+                      const newUrls = [...s.imageUrls];
+                      newUrls[slotIdx] = newUrl;
+                      const next = { ...s, imageUrls: newUrls };
+                      autoSave(next);
+                      return next;
+                    });
+                  } else {
+                    setState((s) => {
+                      const newChapters = [...s.savedChapters];
+                      const ch = { ...newChapters[currentIdx] };
+                      const newUrls = [...(ch.imageUrls ?? [])];
+                      newUrls[slotIdx] = newUrl;
+                      ch.imageUrls = newUrls;
+                      newChapters[currentIdx] = ch;
+                      const next = { ...s, savedChapters: newChapters };
+                      autoSave(next);
+                      return next;
+                    });
+                  }
+                }}
               />
             )}
           </div>
