@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildStyleSuffix, buildRegenPrompt, buildRegenUrl } from "./imageRegen";
+import { buildStyleSuffix, buildRegenPrompt, buildRegenUrl, buildImageUrl } from "./imageRegen";
 
 describe("buildStyleSuffix", () => {
   it("returns a string containing age-range style for tiny", () => {
@@ -78,5 +78,38 @@ describe("buildRegenUrl", () => {
     const url = buildRegenUrl("make it rainy", "Zara's cave", artStyle);
     const path = url.split("?")[0];
     expect(path).not.toContain(" ");
+  });
+});
+
+describe("buildImageUrl", () => {
+  it("returns a Pollinations URL", () => {
+    const artStyle = buildStyleSuffix("older", "fantasy");
+    const url = buildImageUrl("a cave scene", artStyle);
+    expect(url).toMatch(/^https:\/\/image\.pollinations\.ai\/prompt\//);
+  });
+
+  it("includes width, height, model, and seed params", () => {
+    const artStyle = buildStyleSuffix("older", "");
+    const url = buildImageUrl("forest", artStyle);
+    expect(url).toContain("width=768");
+    expect(url).toContain("height=512");
+    expect(url).toContain("model=turbo");
+    expect(url).toMatch(/seed=\d+/);
+  });
+
+  it("prepends character anchor when provided", () => {
+    const artStyle = buildStyleSuffix("older", "");
+    const url = buildImageUrl("cave scene", artStyle, "Gus the gopher, small brown fur, round nose");
+    const decoded = decodeURIComponent(url.split("?")[0]);
+    expect(decoded).toContain("Gus the gopher");
+    expect(decoded).toContain("cave scene");
+    expect(decoded.indexOf("Gus the gopher")).toBeLessThan(decoded.indexOf("cave scene"));
+  });
+
+  it("works without character anchor", () => {
+    const artStyle = buildStyleSuffix("older", "");
+    const url = buildImageUrl("forest scene", artStyle);
+    const decoded = decodeURIComponent(url.split("?")[0]);
+    expect(decoded).toContain("forest scene");
   });
 });
