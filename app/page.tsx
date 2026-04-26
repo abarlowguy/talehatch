@@ -1,14 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import AnswerLog from "@/components/AnswerLog";
-import PromptBox from "@/components/PromptBox";
-import InputBar from "@/components/InputBar";
+import QAPrompt from "@/components/QAPrompt";
 import ContributionMeter from "@/components/ContributionMeter";
 import StoryPicker from "@/components/StoryPicker";
 import {
-  MIN_QUESTIONS,
-  MAX_QUESTIONS,
   TOTAL_COLLECTABLE,
   FIRST_PROMPT,
   NEXT_CHAPTER_FIRST_PROMPT,
@@ -16,15 +13,17 @@ import {
   AGE_RANGE_CONFIG,
 } from "@/lib/prompts";
 import type { AgeRange } from "@/lib/prompts";
-import { suggestions } from "@/lib/suggestions";
 import { extractNouns, mergeEntities } from "@/lib/entityExtractor";
 import {
   generateStorySegment,
   generateChapter,
   editChapter,
+  fetchHints,
   type ChapterRecord,
+  type ChapterHistoryEntry,
 } from "@/lib/storyBuilder";
 import { buildRegenUrl } from "@/lib/imageRegen";
+import { useKeyboardScroll } from "@/lib/useKeyboardScroll";
 
 type Mode = "guided" | "building" | "chapter";
 type Screen = "landing" | "age-select" | "story";
@@ -53,6 +52,9 @@ interface AppState {
   storyId: string | null;
   userEmail: string | null;
   ageRange: AgeRange;
+  isFinalChapter: boolean;
+  storyMoral: string;
+  characterDescription: string;
 }
 
 const INITIAL_STATE: AppState = {
@@ -76,6 +78,9 @@ const INITIAL_STATE: AppState = {
   storyId: null,
   userEmail: null,
   ageRange: "older",
+  isFinalChapter: false,
+  storyMoral: "",
+  characterDescription: "",
 };
 
 function buildStoryTitle(state: AppState): string {
@@ -117,6 +122,9 @@ function serializeState(state: AppState): Record<string, unknown> {
     storyId: state.storyId,
     userEmail: state.userEmail,
     ageRange: state.ageRange,
+    isFinalChapter: state.isFinalChapter,
+    storyMoral: state.storyMoral,
+    characterDescription: state.characterDescription,
   };
 }
 
@@ -124,9 +132,6 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("landing");
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [isLoading, setIsLoading] = useState(false);
-  const [ideasOpen, setIdeasOpen] = useState(false);
-  const [ideasHighlighted, setIdeasHighlighted] = useState(false);
-  const [suggestionText, setSuggestionText] = useState("");
   const [currentPrompt, setCurrentPrompt] = useState(FIRST_PROMPT);
   const [buildingStatus, setBuildingStatus] = useState("Hatching your chapter…");
 
@@ -144,18 +149,7 @@ export default function Home() {
     if (state.mode === "chapter") setViewingChapterIdx(null);
   }, [state.mode]);
 
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    setIdeasHighlighted(false);
-    inactivityTimer.current = setTimeout(() => setIdeasHighlighted(true), 5000);
-  }, []);
-
-  useEffect(() => {
-    resetInactivityTimer();
-    return () => { if (inactivityTimer.current) clearTimeout(inactivityTimer.current); };
-  }, [state.step, resetInactivityTimer]);
+  useKeyboardScroll();
 
   // Trigger chapter generation when entering "building" mode
   useEffect(() => {
@@ -187,6 +181,9 @@ export default function Home() {
       previousCliffhanger,
       ageRange: state.ageRange,
       artStyle: state.artStyle,
+      isFinalChapter: state.isFinalChapter,
+      storyMoral: state.storyMoral,
+      characterDescription: state.characterDescription,
     }).then((result) => {
       clearInterval(interval);
       if (result.error) {
@@ -204,6 +201,7 @@ export default function Home() {
           imageUrls: result.imageUrls ?? [],
           imagePrompts: result.imagePrompts ?? [],
           artStyle: result.artStyle ?? s.artStyle,
+          characterDescription: result.characterDescription ?? s.characterDescription,
         };
         // Auto-save fire-and-forget
         autoSave(next);
@@ -289,6 +287,9 @@ export default function Home() {
       storyId: (savedState.storyId as string) ?? null,
       userEmail: (savedState.userEmail as string) ?? (savedState._savedEmail as string) ?? null,
       ageRange: (savedState.ageRange as AgeRange) ?? "older",
+      isFinalChapter: (savedState.isFinalChapter as boolean) ?? false,
+      storyMoral: (savedState.storyMoral as string) ?? "",
+      characterDescription: (savedState.characterDescription as string) ?? "",
     };
 
     // Restore prompt cursor
@@ -310,9 +311,6 @@ export default function Home() {
 
   async function handleGuidedInput(input: string) {
     setIsLoading(true);
-    setIdeasOpen(false);
-    setSuggestionText("");
-    resetInactivityTimer();
 
     const answeredPrompt = currentPrompt;
     const newEntities = mergeEntities(state.entities, extractNouns(input));
@@ -332,6 +330,12 @@ export default function Home() {
       answer: newInputs[i] ?? "",
     }));
 
+    const chapterHistory: ChapterHistoryEntry[] = state.savedChapters.map((ch) => ({
+      chapterNumber: ch.chapterNumber,
+      title: ch.title,
+      cliffhanger: ch.cliffhanger,
+    }));
+
     const tier = AGE_RANGE_CONFIG[state.ageRange];
 
     const result = await generateStorySegment({
@@ -346,6 +350,7 @@ export default function Home() {
       previousCliffhanger,
       conversationHistory,
       ageRange: state.ageRange,
+      chapterHistory,
     });
 
     const newStory = result.story ?? state.story;
@@ -375,6 +380,44 @@ export default function Home() {
     setState(nextState);
     autoSave(nextState);
     setIsLoading(false);
+  }
+
+  async function handleSkip() {
+    const previousCliffhanger =
+      state.savedChapters.length > 0
+        ? state.savedChapters[state.savedChapters.length - 1].cliffhanger
+        : undefined;
+
+    const chapterHistory: ChapterHistoryEntry[] = state.savedChapters.map((ch) => ({
+      chapterNumber: ch.chapterNumber,
+      title: ch.title,
+      cliffhanger: ch.cliffhanger,
+    }));
+
+    const nextStep = state.step + 1;
+    setState((s) => ({ ...s, step: nextStep, inputs: [...s.inputs, ""] }));
+    setCurrentPrompt("…");
+
+    const res = await generateStorySegment({
+      story: state.story,
+      input: "__skip__",
+      entities: state.entities,
+      mode: "guided",
+      step: nextStep,
+      coveredElements: state.coveredElements,
+      questionCount: nextStep,
+      chapterNumber: state.chapterNumber,
+      previousCliffhanger,
+      conversationHistory: state.promptHistory.map((p, i) => ({
+        prompt: p,
+        answer: state.inputs[i] ?? "",
+      })),
+      ageRange: state.ageRange,
+      chapterHistory,
+    });
+
+    if (res.nextPrompt) setCurrentPrompt(res.nextPrompt);
+    if (res.readyToWrite) setState((s) => ({ ...s, mode: "building" }));
   }
 
   function resetEditState() {
@@ -436,6 +479,7 @@ export default function Home() {
       userEmail: s.userEmail,
       ageRange: s.ageRange,
       artStyle: s.artStyle,
+      characterDescription: s.characterDescription,
     }));
 
     setCurrentPrompt(NEXT_CHAPTER_FIRST_PROMPT);
@@ -600,6 +644,7 @@ export default function Home() {
                 imageUrls={displayImageUrls}
                 regenPrompts={displayImagePrompts}
                 artStyle={state.artStyle}
+                characterAnchor={state.characterDescription || undefined}
                 onImageChange={(slotIdx, newUrl) => {
                   if (isViewingCurrent) {
                     setState((s) => {
@@ -771,11 +816,21 @@ export default function Home() {
   }
 
   // ── GUIDED ───────────────────────────────────────────────────
-  const currentSuggestions = suggestions[state.step] ?? [];
-  const answerEntries = state.promptHistory.map((prompt, i) => ({
-    prompt,
+  const answerEntries = state.promptHistory.map((p, i) => ({
+    prompt: p,
     answer: state.inputs[i] ?? "",
   }));
+
+  const chapterHistory: ChapterHistoryEntry[] = state.savedChapters.map((ch) => ({
+    chapterNumber: ch.chapterNumber,
+    title: ch.title,
+    cliffhanger: ch.cliffhanger,
+  }));
+
+  const previousCliffhanger =
+    state.savedChapters.length > 0
+      ? state.savedChapters[state.savedChapters.length - 1].cliffhanger
+      : undefined;
 
   return (
     <div className="min-h-screen flex flex-col p-4 gap-4 max-w-4xl mx-auto">
@@ -800,33 +855,61 @@ export default function Home() {
 
       <AnswerLog entries={answerEntries} isLoading={isLoading} />
 
-      <PromptBox
+      <QAPrompt
+        key={state.step}
         prompt={currentPrompt}
-        coveredCount={state.coveredElements.length}
-        totalCount={TOTAL_COLLECTABLE}
-      />
-
-      {ideasOpen && currentSuggestions.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-1">
-          {currentSuggestions.map((s) => (
-            <button
-              key={s}
-              onClick={() => { setSuggestionText(s); setIdeasOpen(false); }}
-              className="px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 hover:bg-amber-100 transition"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <InputBar
+        chapterNumber={state.chapterNumber}
+        questionIndex={state.step}
         onSubmit={handleGuidedInput}
-        onNeedIdeas={() => setIdeasOpen(!ideasOpen)}
+        onSkip={handleSkip}
+        onRephrase={async () => {
+          const res = await generateStorySegment({
+            story: state.story,
+            input: "__rephrase__",
+            entities: state.entities,
+            mode: "guided",
+            step: state.step,
+            coveredElements: state.coveredElements,
+            questionCount: state.step,
+            chapterNumber: state.chapterNumber,
+            previousCliffhanger,
+            conversationHistory: state.promptHistory.map((p, i) => ({
+              prompt: p,
+              answer: state.inputs[i] ?? "",
+            })),
+            ageRange: state.ageRange,
+            chapterHistory,
+          });
+          return res.nextPrompt ?? currentPrompt;
+        }}
+        onFetchHints={async () => {
+          const res = await fetchHints({
+            type: "answer",
+            question: currentPrompt,
+            story: state.story,
+            entities: state.entities,
+            chapterHistory,
+            previousAnswers: state.inputs,
+          });
+          return res.hints;
+        }}
+        isFinalChapter={state.isFinalChapter}
+        storyMoral={state.storyMoral}
+        onFinalChapterChange={(val) =>
+          setState((s) => ({ ...s, isFinalChapter: val, storyMoral: val ? s.storyMoral : "" }))
+        }
+        onMoralChange={(val) => setState((s) => ({ ...s, storyMoral: val }))}
+        onFetchMoralHints={async () => {
+          const res = await fetchHints({
+            type: "moral",
+            question: "",
+            story: state.story,
+            entities: state.entities,
+            chapterHistory,
+          });
+          return res.hints;
+        }}
         isLoading={isLoading}
-        showIdeasButton={currentSuggestions.length > 0}
-        ideasHighlighted={ideasHighlighted}
-        injectedText={suggestionText}
       />
 
       <ContributionMeter
@@ -845,12 +928,14 @@ function ChapterBody({
   regenPrompts,
   artStyle,
   onImageChange,
+  characterAnchor,
 }: {
   chapter: string;
   imageUrls: string[];
   regenPrompts: string[];
   artStyle: string;
   onImageChange: (slotIdx: number, newUrl: string) => void;
+  characterAnchor?: string;
 }) {
   const [slots, setSlots] = useState<SlotState[]>(() => imageUrls.map((_, i) => i === 0 ? "loading" : "pending"));
   const [blobUrls, setBlobUrls] = useState<(string | null)[]>(() => imageUrls.map(() => null));
@@ -884,7 +969,7 @@ function ChapterBody({
 
   function describeRegen(i: number) {
     if (!promptText.trim()) return;
-    const newUrl = buildRegenUrl(promptText.trim(), regenPrompts[i] ?? "", artStyle);
+    const newUrl = buildRegenUrl(promptText.trim(), regenPrompts[i] ?? "", artStyle, characterAnchor || undefined);
     setUrls((prev) => { const n = [...prev]; n[i] = newUrl; return n; });
     setBlobUrls((prev) => { const n = [...prev]; n[i] = null; return n; });
     setSlots((prev) => { const n = [...prev]; n[i] = "loading"; return n; });
