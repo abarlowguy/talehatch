@@ -8,14 +8,25 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 function buildSystemPrompt(
   chapterNumber: number,
   ageRange: AgeRange,
-  previousCliffhanger?: string
+  previousCliffhanger?: string,
+  chapterHistory?: Array<{ chapterNumber: number; title: string; cliffhanger: string }>
 ): string {
   const tier = AGE_RANGE_CONFIG[ageRange];
 
-  const chapterContext =
-    chapterNumber > 1 && previousCliffhanger
-      ? `\nThis is Chapter ${chapterNumber}. The previous chapter ended with:\n"${previousCliffhanger}"\nAsk questions that build on what came before and explore what happens next.\n`
-      : "";
+  let chapterContext = "";
+  if (chapterNumber > 1 && previousCliffhanger) {
+    chapterContext = `\nThis is Chapter ${chapterNumber}. The previous chapter ended with:\n"${previousCliffhanger}"\nAsk questions that build on what came before and explore what happens next.\n`;
+  }
+
+  let historyContext = "";
+  if (chapterHistory && chapterHistory.length > 1) {
+    const sorted = [...chapterHistory].sort((a, b) => b.chapterNumber - a.chapterNumber);
+    const lines = sorted.map((ch, i) => {
+      const weight = i === 0 ? "MOST RECENT — prioritise callbacks to this" : `chapter ${ch.chapterNumber}`;
+      return `• Chapter ${ch.chapterNumber} ("${ch.title}") [${weight}]: ${ch.cliffhanger}`;
+    });
+    historyContext = `\nCHAPTER HISTORY (most recent first — weight your questions toward the most recent events):\n${lines.join("\n")}\n`;
+  }
 
   const elementList = tier.elements
     .map((el) => `- ${el}: ${ELEMENT_LABELS[el as StoryElement] ?? el}`)
@@ -23,7 +34,7 @@ function buildSystemPrompt(
 
   const readySignal = tier.readyElements.join(", ");
 
-  return `You are a creative story interviewer helping build a story for ${tier.readerDescription}.${chapterContext}
+  return `You are a creative story interviewer helping build a story for ${tier.readerDescription}.${chapterContext}${historyContext}
 
 YOUR ONLY JOB IS TO ASK THE NEXT GREAT QUESTION.
 
@@ -104,6 +115,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     previousCliffhanger,
     conversationHistory = [],
     ageRange = "older",
+    chapterHistory = [],
   } = req.body as {
     story: string;
     input: string;
@@ -114,6 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     previousCliffhanger?: string;
     conversationHistory?: Array<{ prompt: string; answer: string }>;
     ageRange?: AgeRange;
+    chapterHistory?: Array<{ chapterNumber: number; title: string; cliffhanger: string }>;
   };
 
   if (!input) {
@@ -141,7 +154,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const message = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 600,
-      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger),
+      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger, chapterHistory),
       messages: [{ role: "user", content: userPrompt }],
     });
 
