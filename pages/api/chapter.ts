@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import Anthropic from "@anthropic-ai/sdk";
 import { AGE_RANGE_CONFIG } from "@/lib/prompts";
 import type { AgeRange } from "@/lib/prompts";
+import { STYLE_SUFFIX } from "@/lib/imageRegen";
 
 export const config = {
   maxDuration: 60,
@@ -139,7 +140,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : ["A child in a mysterious landscape, dramatic lighting, kid-friendly storybook art style"];
 
     const imageUrls = imagePromptTexts.map((prompt) => {
-      const styled = `${prompt}, children's book illustration, watercolour and ink, warm and magical, highly detailed`;
+      const styled = `${prompt}${STYLE_SUFFIX}`;
       const seed = Math.floor(Math.random() * 999999);
       return `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=turbo&seed=${seed}`;
     });
