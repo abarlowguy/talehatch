@@ -48,7 +48,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       messages: [{ role: "user", content: userPrompt }],
     });
 
-    const revised = (message.content[0] as { text: string }).text.trim();
+    const block = message.content[0];
+    if (!block || block.type !== "text") {
+      return res.status(500).json({ error: "Unexpected response format from AI" });
+    }
+    const revised = block.text.trim();
     return res.status(200).json({ chapter: revised });
   } catch (err) {
     console.error(err);

@@ -1,9 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { initDb, getStoriesByEmail, createStory } from "@/lib/db";
+import { ensureDb, getStoriesByEmail, createStory } from "@/lib/db";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    await initDb();
+    await ensureDb();
   } catch {
     return res.status(500).json({ error: "Database error" });
   }

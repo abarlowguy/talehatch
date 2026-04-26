@@ -5,7 +5,7 @@ function getDb() {
   return neon(process.env.DATABASE_URL);
 }
 
-export async function initDb() {
+async function initDb() {
   const sql = getDb();
   await sql`
     CREATE TABLE IF NOT EXISTS users (
@@ -24,6 +24,16 @@ export async function initDb() {
       state TEXT NOT NULL
     )
   `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_stories_user_email ON stories (user_email)
+  `;
+}
+
+let _initPromise: Promise<void> | null = null;
+
+export function ensureDb(): Promise<void> {
+  if (!_initPromise) _initPromise = initDb();
+  return _initPromise;
 }
 
 export interface StorySummary {

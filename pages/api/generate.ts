@@ -145,7 +145,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       messages: [{ role: "user", content: userPrompt }],
     });
 
-    const raw = (message.content[0] as { text: string }).text.trim();
+    const block = message.content[0];
+    if (!block || block.type !== "text") {
+      return res.status(500).json({ error: "Unexpected response format from AI" });
+    }
+    const raw = block.text.trim();
 
     const storyMatch = raw.match(/STORY:\s*([\s\S]*?)(?=COVERED:|$)/i);
     const coveredMatch = raw.match(/COVERED:\s*([\s\S]*?)(?=READY:|$)/i);

@@ -6,7 +6,7 @@ interface Props {
 }
 
 export default function ContributionMeter({ coveredCount, totalCount }: Props) {
-  const pct = Math.round((coveredCount / totalCount) * 100);
+  const pct = totalCount === 0 ? 0 : Math.round((coveredCount / totalCount) * 100);
 
   return (
     <div className="flex items-center gap-3 px-1 py-2">
