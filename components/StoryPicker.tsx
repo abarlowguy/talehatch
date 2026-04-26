@@ -73,7 +73,7 @@ export default function StoryPicker({ onStart, onResume, initialEmail }: Props) 
     setResumeLoading(storyId);
     setFetchError("");
     try {
-      const res = await fetch(`/api/stories/${storyId}`);
+      const res = await fetch(`/api/stories/${storyId}?email=${encodeURIComponent(email.trim())}`);
       if (!res.ok) throw new Error();
       const data = await res.json();
       onResume({ ...data.state, _savedEmail: email.trim() });
@@ -87,7 +87,7 @@ export default function StoryPicker({ onStart, onResume, initialEmail }: Props) 
     setDeleteLoading(storyId);
     setFetchError("");
     try {
-      const res = await fetch(`/api/stories/${storyId}`, { method: "DELETE" });
+      const res = await fetch(`/api/stories/${storyId}?email=${encodeURIComponent(email.trim())}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       setStories((prev) => prev.filter((s) => s.id !== storyId));
       setDeleteConfirm(null);

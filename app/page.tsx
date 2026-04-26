@@ -243,7 +243,7 @@ export default function Home() {
       fetch(`/api/stories/${s.storyId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, chapterCount, state: serialized }),
+        body: JSON.stringify({ email: s.userEmail, title, chapterCount, state: serialized }),
       }).catch(() => {/* fire-and-forget */});
     }
   }

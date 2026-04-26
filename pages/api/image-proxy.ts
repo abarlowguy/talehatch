@@ -13,11 +13,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Only Pollinations URLs allowed" });
   }
 
-  const upstream = await fetch(target);
+  let upstream: Response;
+  try {
+    upstream = await fetch(target);
+  } catch {
+    return res.status(502).json({ error: "Image fetch failed" });
+  }
+
+  if (!upstream.ok) {
+    return res.status(502).json({ error: `Upstream returned ${upstream.status}` });
+  }
+
   const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
   const buffer = await upstream.arrayBuffer();
 
   res.setHeader("Content-Type", contentType);
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-  res.status(upstream.status).send(Buffer.from(buffer));
+  res.status(200).send(Buffer.from(buffer));
 }
