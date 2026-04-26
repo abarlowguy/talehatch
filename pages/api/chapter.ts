@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import Anthropic from "@anthropic-ai/sdk";
 import { AGE_RANGE_CONFIG } from "@/lib/prompts";
 import type { AgeRange } from "@/lib/prompts";
-import { buildStyleSuffix } from "@/lib/imageRegen";
+import { buildStyleSuffix, buildImageUrl } from "@/lib/imageRegen";
 
 export const config = {
   maxDuration: 60,
@@ -13,7 +13,9 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 function buildSystemPrompt(
   chapterNumber: number,
   ageRange: AgeRange,
-  previousCliffhanger?: string
+  previousCliffhanger?: string,
+  isFinalChapter?: boolean,
+  storyMoral?: string
 ): string {
   const tier = AGE_RANGE_CONFIG[ageRange];
   const isFirstChapter = chapterNumber === 1;
@@ -24,6 +26,10 @@ function buildSystemPrompt(
 
   const storyTitleSection = isFirstChapter
     ? `STORY_TITLE:\n[A short, evocative title for the whole story — 2–5 words. Not the chapter title. Something that captures the spirit of the adventure.]\n\n`
+    : "";
+
+  const characterDescSection = isFirstChapter
+    ? `CHARACTER_DESCRIPTION:\n[One sentence describing the main character's physical appearance, e.g. "Gus is a small brown gopher with round black eyes and dirt-stained paws."]\n\n`
     : "";
 
   const continuationContext = !isFirstChapter && previousCliffhanger
@@ -41,6 +47,17 @@ function buildSystemPrompt(
       "Write like a real published author. Vary sentence length. Short punchy sentences for action; longer ones for description. Full emotional and psychological depth.",
   };
 
+  const endingRules = isFinalChapter
+    ? `ENDING RULES (CRITICAL — this is the final chapter):
+- The chapter MUST end with a satisfying resolution — the main conflict is resolved.
+- Do NOT end on a cliffhanger. The story should feel complete.
+- ${storyMoral ? `Weave this lesson naturally into the ending (do not state it as a moral — show it through the character's actions or realisation): "${storyMoral}"` : "End on a warm, earned moment of growth or triumph."}
+- The final paragraph should leave the reader feeling satisfied, not wanting more.`
+    : `CLIFFHANGER RULES (CRITICAL):
+- The chapter MUST end on a genuine cliffhanger — a moment of threat, discovery, or impossible choice that makes stopping feel unbearable.
+- The cliffhanger should feel earned by the events of the chapter, not dropped in from nowhere.
+- It must leave one urgent question unanswered.`;
+
   return `You are writing Chapter ${chapterNumber} of a story for ${tier.readerDescription}.${continuationContext}
 
 You have been given the child's answers to guided prompts. These answers contain ALL the raw material for the chapter. Transform them into a vivid, engaging chapter — roughly ${tier.chapterWords} words.
@@ -51,25 +68,22 @@ RULES:
 - Use ONLY the ideas the child provided. Do not invent major new characters, locations, or plot elements.
 - You MAY add sensory detail, atmosphere, pacing, and emotional texture.
 - Write in third person, past tense, as a real published book for young readers.
-- Clear structure: beginning (establish the scene), middle (conflict escalates), end (cliffhanger).
+- Clear structure: beginning (establish the scene), middle (conflict escalates), end (resolution or cliffhanger).
 - DO NOT use the word "suddenly." DO NOT use clichés.
 - Write like a real author. Make it feel earned.
 
-CLIFFHANGER RULES (CRITICAL):
-- The chapter MUST end on a genuine cliffhanger — a moment of threat, discovery, or impossible choice that makes stopping feel unbearable.
-- The cliffhanger should feel earned by the events of the chapter, not dropped in from nowhere.
-- It must leave one urgent question unanswered.
+${endingRules}
 
 Return your response in EXACTLY this format:
 
-${genreSection}${storyTitleSection}TITLE:
+${genreSection}${characterDescSection}${storyTitleSection}TITLE:
 [A short, evocative chapter title — not "Chapter ${chapterNumber}", just the title]
 
 CHAPTER:
-[The full chapter text — 1,200 to 1,500 words, ending on the cliffhanger]
+[The full chapter text — 1,200 to 1,500 words]
 
 CLIFFHANGER:
-[2–3 sentences summarising the exact cliffhanger moment — written so the next chapter can pick up from it precisely]
+${isFinalChapter ? "[Write: none]" : "[2–3 sentences summarising the exact cliffhanger moment — written so the next chapter can pick up from it precisely]"}
 
 IMAGE_PROMPTS:
 Write 3 to 5 image prompts — one for each distinct scene or visual moment in this chapter, in order. Number them. Each prompt should describe characters, setting, action, mood, lighting, and colour palette in under 80 words. Kid-friendly watercolour illustration style.
@@ -88,6 +102,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const {
     inputs, story, entities, chapterNumber = 1, previousCliffhanger,
     ageRange = "older", artStyle: incomingArtStyle,
+    isFinalChapter = false,
+    storyMoral = "",
+    characterDescription: incomingCharacterDescription = "",
   } = req.body as {
     inputs: string[];
     story: string;
@@ -96,6 +113,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     previousCliffhanger?: string;
     ageRange?: AgeRange;
     artStyle?: string;
+    isFinalChapter?: boolean;
+    storyMoral?: string;
+    characterDescription?: string;
   };
 
   if (!inputs || inputs.length === 0) {
@@ -117,7 +137,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4000,
-      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger),
+      system: buildSystemPrompt(chapterNumber, ageRange, previousCliffhanger, isFinalChapter, storyMoral),
       messages: [{ role: "user", content: userPrompt }],
     });
 
@@ -131,6 +151,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? raw.match(/STORY_TITLE:\s*([\s\S]*?)(?=TITLE:|$)/i)
       : null;
     const storyTitle = storyTitleMatch ? storyTitleMatch[1].trim() : undefined;
+
+    const characterDescMatch = chapterNumber === 1
+      ? raw.match(/CHARACTER_DESCRIPTION:\s*([\s\S]*?)(?=STORY_TITLE:|TITLE:|$)/i)
+      : null;
+    const characterDescription = characterDescMatch
+      ? characterDescMatch[1].trim()
+      : incomingCharacterDescription;
 
     const genreMatch = chapterNumber === 1
       ? raw.match(/^GENRE:\s*(.+)$/im)
@@ -160,12 +187,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : ["A child in a mysterious landscape, dramatic lighting, kid-friendly storybook art style"];
 
     const imageUrls = imagePromptTexts.map((prompt) => {
-      const styled = `${prompt}${artStyle}`;
-      const seed = Math.floor(Math.random() * 999999);
-      return `https://image.pollinations.ai/prompt/${encodeURIComponent(styled)}?width=768&height=512&model=turbo&seed=${seed}`;
+      return buildImageUrl(prompt, artStyle, characterDescription || undefined);
     });
 
-    return res.status(200).json({ chapterTitle, chapter, cliffhanger, imageUrls, imagePrompts: imagePromptTexts, storyTitle, artStyle });
+    return res.status(200).json({
+      chapterTitle, chapter, cliffhanger, imageUrls, imagePrompts: imagePromptTexts,
+      storyTitle, artStyle, characterDescription,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Could not generate chapter. Try again." });
