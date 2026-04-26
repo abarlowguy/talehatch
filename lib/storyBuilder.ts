@@ -1,3 +1,9 @@
+export interface ChapterHistoryEntry {
+  chapterNumber: number;
+  title: string;
+  cliffhanger: string;
+}
+
 export interface GenerateRequest {
   story: string;
   input: string;
@@ -10,6 +16,7 @@ export interface GenerateRequest {
   previousCliffhanger?: string;
   conversationHistory?: Array<{ prompt: string; answer: string }>;
   ageRange?: string;
+  chapterHistory?: ChapterHistoryEntry[];
 }
 
 export interface GenerateResponse {
@@ -28,6 +35,9 @@ export interface ChapterRequest {
   previousCliffhanger?: string;
   ageRange?: string;
   artStyle?: string;
+  isFinalChapter?: boolean;
+  storyMoral?: string;
+  characterDescription?: string;
 }
 
 export interface ChapterResponse {
@@ -38,6 +48,7 @@ export interface ChapterResponse {
   imagePrompts: string[];
   storyTitle?: string;
   artStyle?: string;
+  characterDescription?: string;
   error?: string;
 }
 
@@ -49,6 +60,20 @@ export interface EditChapterRequest {
 
 export interface EditChapterResponse {
   chapter: string;
+  error?: string;
+}
+
+export interface HintsRequest {
+  type: "answer" | "moral";
+  question: string;
+  story: string;
+  entities: string[];
+  chapterHistory?: ChapterHistoryEntry[];
+  previousAnswers?: string[];
+}
+
+export interface HintsResponse {
+  hints: string[];
   error?: string;
 }
 
@@ -93,5 +118,15 @@ export async function editChapter(req: EditChapterRequest): Promise<EditChapterR
     body: JSON.stringify(req),
   });
   if (!res.ok) return { chapter: req.chapter, error: "Could not apply edits. Try again." };
+  return res.json();
+}
+
+export async function fetchHints(req: HintsRequest): Promise<HintsResponse> {
+  const res = await fetch("/api/hints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) return { hints: [], error: "Could not load hints." };
   return res.json();
 }
