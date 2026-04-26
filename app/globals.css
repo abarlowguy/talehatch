@@ -5,6 +5,10 @@
   --foreground: #171717;
 }
 
+html {
+  scroll-padding-bottom: var(--keyboard-height, 0px);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
