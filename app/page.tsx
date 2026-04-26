@@ -150,6 +150,8 @@ export default function Home() {
   const [editError, setEditError] = useState("");
 
   const [viewingChapterIdx, setViewingChapterIdx] = useState<number | null>(null);
+  const [titleEditField, setTitleEditField] = useState<null | "story" | "chapter">(null);
+  const [titleEditValue, setTitleEditValue] = useState("");
 
   // Always land on the latest chapter when a new one is generated
   useEffect(() => {
@@ -441,6 +443,8 @@ export default function Home() {
     setEditText("");
     setDirectText("");
     setEditError("");
+    setTitleEditField(null);
+    setTitleEditValue("");
   }
 
   function handleOpenDirectEdit() {
@@ -676,15 +680,84 @@ export default function Home() {
           )}
 
           {/* Title */}
-          <div className="text-center space-y-1">
+          <div className="text-center space-y-2">
+            {/* Book title */}
+            {titleEditField === "story" ? (
+              <input
+                autoFocus
+                value={titleEditValue}
+                onChange={(e) => setTitleEditValue(e.target.value)}
+                onBlur={() => {
+                  if (titleEditValue.trim()) setState((s) => ({ ...s, storyTitle: titleEditValue.trim() }));
+                  setTitleEditField(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setTitleEditField(null);
+                }}
+                className="text-center w-full text-3xl font-bold font-serif text-slate-900 bg-transparent border-b-2 border-amber-400 focus:outline-none"
+              />
+            ) : (
+              <button
+                onClick={() => { setTitleEditField("story"); setTitleEditValue(state.storyTitle || ""); }}
+                className="group block w-full text-3xl font-bold font-serif text-slate-900 hover:text-slate-600 transition"
+              >
+                {state.storyTitle
+                  ? <>{state.storyTitle}<span className="ml-2 opacity-0 group-hover:opacity-30 text-base not-italic">✏️</span></>
+                  : <span className="text-slate-400 italic text-xl font-sans font-normal">Add a book title…</span>
+                }
+              </button>
+            )}
+
             <p className="text-xs font-semibold text-amber-600 tracking-widest uppercase">
               Chapter {displayChapterNum}
             </p>
-            <h1 className="text-3xl font-bold text-slate-800">{displayTitle}</h1>
+
+            {/* Chapter title */}
+            {titleEditField === "chapter" ? (
+              <input
+                autoFocus
+                value={titleEditValue}
+                onChange={(e) => setTitleEditValue(e.target.value)}
+                onBlur={() => {
+                  const val = titleEditValue.trim();
+                  if (val) {
+                    if (isViewingCurrent) {
+                      setState((s) => ({ ...s, chapterTitle: val }));
+                    } else {
+                      setState((s) => {
+                        const chapters = [...s.savedChapters];
+                        chapters[currentIdx] = { ...chapters[currentIdx], title: val };
+                        return { ...s, savedChapters: chapters };
+                      });
+                    }
+                  }
+                  setTitleEditField(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setTitleEditField(null);
+                }}
+                className="text-center w-full text-xl font-semibold text-slate-600 bg-transparent border-b border-slate-300 focus:outline-none"
+              />
+            ) : (
+              <button
+                onClick={() => { setTitleEditField("chapter"); setTitleEditValue(displayTitle); }}
+                className="group block w-full text-xl font-semibold text-slate-600 hover:text-slate-800 transition"
+              >
+                {displayTitle}<span className="ml-1.5 opacity-0 group-hover:opacity-30 text-sm">✏️</span>
+              </button>
+            )}
+
             {state.author && (
               <p className="text-slate-500 text-sm">by {state.author}</p>
             )}
           </div>
+
+          {/* Author input (only on current chapter, only if not yet set) */}
+          {isViewingCurrent && !state.author && (
+            <AuthorInput onSubmit={(author) => setState((s) => ({ ...s, author }))} />
+          )}
 
           {/* Chapter text with interspersed images */}
           <div className="bg-white rounded-2xl shadow p-8 space-y-8">
@@ -726,11 +799,6 @@ export default function Home() {
               />
             )}
           </div>
-
-          {/* Author input (only on current chapter, only if not yet set) */}
-          {isViewingCurrent && !state.author && (
-            <AuthorInput onSubmit={(author) => setState((s) => ({ ...s, author }))} />
-          )}
 
           {/* Decision / edit panel — only on the current (latest) chapter */}
           {isViewingCurrent && editMode === "idle" && (
@@ -1042,14 +1110,14 @@ function ChapterBody({
         const blobSrc = blobUrls[i];
         return (
           <div key={i} className="space-y-4">
-            <div className="w-full rounded-2xl overflow-hidden shadow-lg bg-slate-200 relative group">
+            <div className="w-full aspect-square rounded-2xl overflow-hidden shadow-lg bg-slate-200 relative group">
               {(slot === "pending") && (
-                <div className="w-full aspect-video flex items-center justify-center text-slate-300 text-xs">
+                <div className="absolute inset-0 flex items-center justify-center text-slate-300 text-xs">
                   Illustration {i + 1} of {urls.length}
                 </div>
               )}
               {(slot === "loading") && (
-                <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 text-slate-400 text-sm">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400 text-sm">
                   <div className="flex gap-1">
                     {[0, 1, 2].map((j) => (
                       <div key={j} className="w-2 h-2 rounded-full bg-amber-300 animate-bounce" style={{ animationDelay: `${j * 150}ms` }} />
@@ -1059,7 +1127,7 @@ function ChapterBody({
                 </div>
               )}
               {slot === "error" && (
-                <div className="w-full aspect-video flex flex-col items-center justify-center gap-2 text-slate-400 text-sm italic">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400 text-sm italic">
                   <p>Illustration unavailable</p>
                   <button
                     onClick={() => regenerate(i)}
@@ -1081,8 +1149,7 @@ function ChapterBody({
                   <img
                     src={blobSrc}
                     alt="Chapter illustration"
-                    className="w-full"
-                    style={{ display: "block" }}
+                    className="absolute inset-0 w-full h-full object-contain"
                   />
                   <div className="absolute bottom-2 right-2 flex gap-1.5">
                     <button

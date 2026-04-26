@@ -38,7 +38,7 @@ export function buildRegenUrl(
   const prefix = characterAnchor ? `${characterAnchor}. ` : "";
   const prompt = buildRegenPrompt(userText, `${prefix}${originalPrompt}`, artStyle);
   const seed = Math.floor(Math.random() * 999999);
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=512&model=turbo&seed=${seed}`;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=768&model=turbo&seed=${seed}`;
 }
 
 export function buildImageUrl(
@@ -49,5 +49,5 @@ export function buildImageUrl(
   const prefix = characterAnchor ? `${characterAnchor}. ` : "";
   const prompt = `${prefix}${scenePrompt}${artStyle}`;
   const seed = Math.floor(Math.random() * 999999);
-  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=512&model=turbo&seed=${seed}`;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=768&model=turbo&seed=${seed}`;
 }

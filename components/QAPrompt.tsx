@@ -28,12 +28,11 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
 interface QAPromptProps {
   prompt: string;
   chapterNumber: number;
-  questionIndex: number; // 0-based — final chapter option shown only when this is 0
+  questionIndex: number;
   onSubmit: (answer: string) => void;
   onSkip: () => void;
   onRephrase: () => Promise<string>;
   onFetchHints: () => Promise<string[]>;
-  // Final chapter (shown on Q0 of chapter 2+)
   isFinalChapter: boolean;
   storyMoral: string;
   onFinalChapterChange: (isFinal: boolean) => void;
@@ -121,14 +120,8 @@ export default function QAPrompt({
   const showFinalChapterOption = chapterNumber >= 2 && questionIndex === 0;
 
   async function handleToggleHints() {
-    if (hintsOpen) {
-      setHintsOpen(false);
-      return;
-    }
-    if (hints.length > 0) {
-      setHintsOpen(true);
-      return;
-    }
+    if (hintsOpen) { setHintsOpen(false); return; }
+    if (hints.length > 0) { setHintsOpen(true); return; }
     setHintsLoading(true);
     try {
       const result = await onFetchHints();
@@ -142,14 +135,8 @@ export default function QAPrompt({
   }
 
   async function handleToggleMoralHints() {
-    if (moralHintsOpen) {
-      setMoralHintsOpen(false);
-      return;
-    }
-    if (moralHints.length > 0) {
-      setMoralHintsOpen(true);
-      return;
-    }
+    if (moralHintsOpen) { setMoralHintsOpen(false); return; }
+    if (moralHints.length > 0) { setMoralHintsOpen(true); return; }
     setMoralHintsLoading(true);
     try {
       const result = await onFetchMoralHints();
@@ -198,61 +185,76 @@ export default function QAPrompt({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Prompt + rephrase icon */}
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-base leading-relaxed flex-1">{currentPrompt}</p>
-        <button
-          onClick={handleRephrase}
-          disabled={rephraseUsed || rephraseLoading}
-          title="Ask this differently"
-          className={`text-xl transition-opacity ${rephraseUsed ? "opacity-30 cursor-not-allowed" : "opacity-60 hover:opacity-100"}`}
-        >
-          {rephraseLoading ? "⏳" : "🔄"}
-        </button>
+      {/* Prompt + Rephrase + Skip on one line */}
+      <div className="flex items-start gap-3">
+        <p className="text-base leading-relaxed text-slate-800 flex-1">{currentPrompt}</p>
+        <div className="flex items-center gap-3 shrink-0 pt-0.5">
+          <button
+            onClick={handleRephrase}
+            disabled={rephraseUsed || rephraseLoading}
+            className={`text-sm font-medium transition ${
+              rephraseUsed
+                ? "text-slate-300 cursor-not-allowed"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {rephraseLoading ? "⏳" : "🔄 Rephrase"}
+          </button>
+          <button
+            onClick={onSkip}
+            className="text-sm font-medium text-slate-500 hover:text-slate-800 transition"
+          >
+            ⏭ Skip
+          </button>
+        </div>
       </div>
 
-      {/* Answer input + mic button */}
-      <div className="relative">
-        <textarea
-          value={answer}
-          onChange={(e) => { setAnswer(e.target.value); committedAnswerRef.current = e.target.value; }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit();
-            }
-          }}
-          placeholder="Type your answer..."
-          rows={3}
-          className={`w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm resize-none focus:outline-none focus:border-white/40 ${speechSupported ? "pr-12" : ""}`}
-        />
+      {/* Answer input */}
+      <textarea
+        value={answer}
+        onChange={(e) => { setAnswer(e.target.value); committedAnswerRef.current = e.target.value; }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit();
+          }
+        }}
+        placeholder="Type your answer..."
+        rows={3}
+        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 placeholder-slate-400 resize-none focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+      />
+
+      {/* Need ideas + mic on same row */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={handleToggleHints}
+          className="text-sm text-purple-600 hover:text-purple-800 font-medium"
+        >
+          {hintsLoading ? "Loading ideas..." : hintsOpen ? "▾ Need ideas?" : "▸ Need ideas?"}
+        </button>
         {speechSupported && (
           <button
             type="button"
             onClick={toggleListening}
-            title={isListening ? "Stop listening" : "Speak your answer"}
-            className={`absolute bottom-3 right-3 text-lg leading-none transition-opacity ${isListening ? "opacity-100 animate-pulse" : "opacity-40 hover:opacity-80"}`}
+            className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
+              isListening ? "text-red-500 animate-pulse" : "text-slate-500 hover:text-slate-800"
+            }`}
           >
-            {isListening ? "🔴" : "🎤"}
+            <span className="text-base">{isListening ? "🔴" : "🎤"}</span>
+            <span>{isListening ? "Stop listening" : "Speak your answer"}</span>
           </button>
         )}
       </div>
 
-      {/* Need ideas */}
+      {/* Hint items */}
       <div>
-        <button
-          onClick={handleToggleHints}
-          className="text-sm text-purple-400 hover:text-purple-300"
-        >
-          {hintsLoading ? "Loading ideas..." : hintsOpen ? "▾ Need ideas?" : "▸ Need ideas?"}
-        </button>
         {hintsOpen && hints.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
             {hints.map((hint, i) => (
               <button
                 key={i}
                 onClick={() => setAnswer(hint)}
-                className="text-left text-sm rounded-lg border border-white/20 bg-white/5 px-3 py-2 hover:bg-white/10 transition"
+                className="text-left text-sm rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 hover:bg-purple-50 hover:border-purple-200 transition"
               >
                 {hint}
               </button>
@@ -261,26 +263,18 @@ export default function QAPrompt({
         )}
       </div>
 
-      {/* Submit + skip */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onSkip}
-          className="text-sm text-white/40 hover:text-white/60 underline"
-        >
-          skip
-        </button>
-        <button
-          onClick={handleSubmit}
-          disabled={!answer.trim() || isLoading}
-          className="flex-1 rounded-xl bg-purple-600 py-3 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition"
-        >
-          Submit →
-        </button>
-      </div>
+      {/* Submit */}
+      <button
+        onClick={handleSubmit}
+        disabled={!answer.trim() || isLoading}
+        className="w-full rounded-xl bg-purple-600 py-3 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition"
+      >
+        Submit →
+      </button>
 
       {/* Final chapter option — only Q0 of chapter 2+ */}
       {showFinalChapterOption && (
-        <div className="border-t border-white/10 pt-3 flex flex-col gap-3">
+        <div className="border-t border-slate-200 pt-3 flex flex-col gap-3">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -288,26 +282,26 @@ export default function QAPrompt({
               onChange={(e) => handleFinalChapterToggle(e.target.checked)}
               className="accent-purple-500"
             />
-            <span className="text-sm text-white/60">Make this the final chapter</span>
+            <span className="text-sm text-slate-600">Make this the final chapter</span>
           </label>
 
           {isFinalChapter && (
-            <div className="rounded-xl border border-purple-500/40 bg-purple-900/20 p-4 flex flex-col gap-3">
-              <p className="text-xs uppercase tracking-widest text-purple-400">Final Chapter</p>
-              <p className="text-sm leading-relaxed">What lesson or message should this story leave with your reader?</p>
+            <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 flex flex-col gap-3">
+              <p className="text-xs uppercase tracking-widest text-purple-600 font-semibold">Final Chapter</p>
+              <p className="text-sm leading-relaxed text-slate-700">What lesson or message should this story leave with your reader?</p>
               <textarea
                 value={storyMoral}
                 onChange={(e) => { onMoralChange(e.target.value); setMoralSaved(false); }}
                 placeholder="e.g. Being brave means helping others even when it's scary"
                 rows={2}
-                className="w-full rounded-lg border border-white/20 bg-black/30 px-3 py-2 text-sm resize-none focus:outline-none focus:border-purple-400"
+                className="w-full rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 resize-none focus:outline-none focus:border-purple-400"
               />
 
               {/* Moral hints */}
               <div>
                 <button
                   onClick={handleToggleMoralHints}
-                  className="text-sm text-purple-400 hover:text-purple-300"
+                  className="text-sm text-purple-600 hover:text-purple-800 font-medium"
                 >
                   {moralHintsLoading ? "Loading ideas..." : moralHintsOpen ? "▾ Need ideas?" : "▸ Need ideas?"}
                 </button>
@@ -317,7 +311,7 @@ export default function QAPrompt({
                       <button
                         key={i}
                         onClick={() => { onMoralChange(hint); setMoralSaved(false); }}
-                        className="text-left text-sm rounded-lg border border-white/20 bg-white/5 px-3 py-2 hover:bg-white/10 transition"
+                        className="text-left text-sm rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-700 hover:bg-purple-50 hover:border-purple-200 transition"
                       >
                         {hint}
                       </button>

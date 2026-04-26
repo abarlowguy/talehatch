@@ -91,7 +91,7 @@ CLIFFHANGER:
 ${isFinalChapter ? "[Write: none]" : "[2–3 sentences summarising the exact cliffhanger moment — written so the next chapter can pick up from it precisely]"}
 
 IMAGE_PROMPTS:
-Write 3 to 5 image prompts — one for each distinct scene or visual moment in this chapter, in order. Number them. Each prompt should describe characters, setting, action, mood, lighting, and colour palette in under 80 words. Kid-friendly watercolour illustration style.
+Write 3 to 5 image prompts — one for each distinct scene or visual moment in this chapter, in order. Number them. Each prompt should describe characters, setting, action, mood, lighting, and colour palette in under 80 words. Describe scene content only — do NOT mention illustration style, medium, or technique (style is applied separately).
 
 1. [Scene description]
 2. [Scene description]
@@ -174,7 +174,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? buildStyleSuffix(ageRange, genre)
       : (incomingArtStyle ?? buildStyleSuffix(ageRange, ""));
 
-    const titleMatch = raw.match(/TITLE:\s*([\s\S]*?)(?=CHAPTER:|$)/i);
+    const titleMatch = raw.match(/^TITLE:\s*([\s\S]*?)(?=CHAPTER:|$)/im);
     const chapterMatch = raw.match(/CHAPTER:\s*([\s\S]*?)(?=CLIFFHANGER:|IMAGE_PROMPTS:|$)/i);
     const cliffhangerMatch = raw.match(/CLIFFHANGER:\s*([\s\S]*?)(?=IMAGE_PROMPTS:|$)/i);
     const imageSection = raw.match(/IMAGE_PROMPTS:\s*([\s\S]*)/i)?.[1] ?? "";
