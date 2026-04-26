@@ -52,6 +52,7 @@ interface AppState {
   storyId: string | null;
   userEmail: string | null;
   ageRange: AgeRange;
+  seussMode: boolean;
   isFinalChapter: boolean;
   storyMoral: string;
   characterDescription: string;
@@ -78,6 +79,7 @@ const INITIAL_STATE: AppState = {
   storyId: null,
   userEmail: null,
   ageRange: "older",
+  seussMode: false,
   isFinalChapter: false,
   storyMoral: "",
   characterDescription: "",
@@ -122,6 +124,7 @@ function serializeState(state: AppState): Record<string, unknown> {
     storyId: state.storyId,
     userEmail: state.userEmail,
     ageRange: state.ageRange,
+    seussMode: state.seussMode,
     isFinalChapter: state.isFinalChapter,
     storyMoral: state.storyMoral,
     characterDescription: state.characterDescription,
@@ -134,6 +137,10 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState(FIRST_PROMPT);
   const [buildingStatus, setBuildingStatus] = useState("Hatching your chapter…");
+
+  // Age select — two-step flow for tiny/young
+  const [pendingAgeRange, setPendingAgeRange] = useState<AgeRange | null>(null);
+  const [seussChecked, setSeussChecked] = useState(false);
 
   // Edit mode UI state — "idle" | "choose" | "prompt" | "direct"
   const [editMode, setEditMode] = useState<"idle" | "choose" | "prompt" | "direct">("idle");
@@ -180,6 +187,7 @@ export default function Home() {
       chapterNumber: state.chapterNumber,
       previousCliffhanger,
       ageRange: state.ageRange,
+      seussMode: state.seussMode,
       artStyle: state.artStyle,
       isFinalChapter: state.isFinalChapter,
       storyMoral: state.storyMoral,
@@ -287,6 +295,7 @@ export default function Home() {
       storyId: (savedState.storyId as string) ?? null,
       userEmail: (savedState.userEmail as string) ?? (savedState._savedEmail as string) ?? null,
       ageRange: (savedState.ageRange as AgeRange) ?? "older",
+      seussMode: (savedState.seussMode as boolean) ?? false,
       isFinalChapter: (savedState.isFinalChapter as boolean) ?? false,
       storyMoral: (savedState.storyMoral as string) ?? "",
       characterDescription: (savedState.characterDescription as string) ?? "",
@@ -350,6 +359,7 @@ export default function Home() {
       previousCliffhanger,
       conversationHistory,
       ageRange: state.ageRange,
+      seussMode: state.seussMode,
       chapterHistory,
     });
 
@@ -415,6 +425,7 @@ export default function Home() {
           answer: state.inputs[i] ?? "",
         })),
         ageRange: state.ageRange,
+        seussMode: state.seussMode,
         chapterHistory,
       });
 
@@ -483,6 +494,7 @@ export default function Home() {
       storyId: s.storyId,
       userEmail: s.userEmail,
       ageRange: s.ageRange,
+      seussMode: s.seussMode,
       artStyle: s.artStyle,
       characterDescription: s.characterDescription,
     }));
@@ -515,6 +527,8 @@ export default function Home() {
 
   // ── AGE SELECT ───────────────────────────────────────────────
   if (screen === "age-select") {
+    const seussTiers: AgeRange[] = ["tiny", "young"];
+
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 px-6 gap-10">
         <div className="text-center space-y-2">
@@ -523,13 +537,49 @@ export default function Home() {
         </div>
         <div className="w-full max-w-xs space-y-3">
           {(["tiny", "young", "middle", "older"] as AgeRange[]).map((range) => (
-            <button
-              key={range}
-              onClick={() => handleAgeSelect(range)}
-              className="w-full py-4 rounded-2xl bg-slate-800 hover:bg-amber-400 border border-slate-700 hover:border-amber-400 text-white font-semibold text-lg transition"
-            >
-              {AGE_RANGE_CONFIG[range].label}
-            </button>
+            <div key={range}>
+              <button
+                onClick={() => {
+                  if (seussTiers.includes(range)) {
+                    setPendingAgeRange(range);
+                    setSeussChecked(false);
+                  } else {
+                    setPendingAgeRange(null);
+                    handleAgeSelect(range);
+                  }
+                }}
+                className={`w-full py-4 rounded-2xl border font-semibold text-lg transition ${
+                  pendingAgeRange === range
+                    ? "bg-amber-400 border-amber-400 text-slate-900"
+                    : "bg-slate-800 hover:bg-amber-400 border-slate-700 hover:border-amber-400 text-white"
+                }`}
+              >
+                {AGE_RANGE_CONFIG[range].label}
+              </button>
+
+              {pendingAgeRange === range && (
+                <div className="mt-2 rounded-2xl border border-amber-400/30 bg-slate-800 px-4 py-4 flex flex-col gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={seussChecked}
+                      onChange={(e) => setSeussChecked(e.target.checked)}
+                      className="accent-amber-400 w-4 h-4"
+                    />
+                    <span className="text-sm text-white/80">✨ Write in Dr. Seuss rhyming style</span>
+                  </label>
+                  <button
+                    onClick={() => {
+                      setState((s) => ({ ...s, seussMode: seussChecked }));
+                      handleAgeSelect(range);
+                    }}
+                    className="w-full py-3 rounded-xl bg-amber-400 text-slate-900 font-semibold text-base hover:bg-amber-300 transition"
+                  >
+                    Start Story →
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -883,6 +933,7 @@ export default function Home() {
               answer: state.inputs[i] ?? "",
             })),
             ageRange: state.ageRange,
+            seussMode: state.seussMode,
             chapterHistory,
           });
           return res.nextPrompt ?? currentPrompt;

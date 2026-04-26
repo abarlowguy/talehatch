@@ -16,6 +16,7 @@ export interface GenerateRequest {
   previousCliffhanger?: string;
   conversationHistory?: Array<{ prompt: string; answer: string }>;
   ageRange?: string;
+  seussMode?: boolean;
   chapterHistory?: ChapterHistoryEntry[];
 }
 
@@ -38,6 +39,7 @@ export interface ChapterRequest {
   isFinalChapter?: boolean;
   storyMoral?: string;
   characterDescription?: string;
+  seussMode?: boolean;
 }
 
 export interface ChapterResponse {
