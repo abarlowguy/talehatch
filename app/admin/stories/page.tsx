@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 interface Story {
   id: string;
   user_email: string;
+  author: string;
   title: string;
   chapter_count: number;
   created_at: string;
@@ -78,6 +79,7 @@ export default function AdminStoriesPage() {
             <thead>
               <tr className="bg-slate-100 text-left">
                 <th className="px-4 py-3 font-medium text-slate-600">Title</th>
+                <th className="px-4 py-3 font-medium text-slate-600">Author</th>
                 <th className="px-4 py-3 font-medium text-slate-600">User</th>
                 <th className="px-4 py-3 font-medium text-slate-600 text-right">
                   Chapters
@@ -105,6 +107,7 @@ export default function AdminStoriesPage() {
                       {story.title}
                     </a>
                   </td>
+                  <td className="px-4 py-3 text-slate-800">{story.author || <span className="text-slate-400 italic">—</span>}</td>
                   <td className="px-4 py-3 text-slate-500">{story.user_email}</td>
                   <td className="px-4 py-3 text-slate-800 text-right">
                     {story.chapter_count}

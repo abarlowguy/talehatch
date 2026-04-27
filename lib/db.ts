@@ -137,6 +137,7 @@ export async function getAllStories(): Promise<
   {
     id: string;
     user_email: string;
+    author: string;
     title: string;
     chapter_count: number;
     created_at: string;
@@ -145,13 +146,15 @@ export async function getAllStories(): Promise<
 > {
   const sql = getDb();
   const rows = await sql`
-    SELECT id, user_email, title, chapter_count, created_at, updated_at
+    SELECT id, user_email, title, chapter_count, created_at, updated_at,
+           COALESCE(state::json->>'author', '') AS author
     FROM stories
     ORDER BY created_at DESC
   `;
   return rows as unknown as {
     id: string;
     user_email: string;
+    author: string;
     title: string;
     chapter_count: number;
     created_at: string;
