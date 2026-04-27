@@ -95,8 +95,15 @@ export default function AdminStoriesPage() {
                   key={story.id}
                   className="border-b border-slate-200 hover:bg-slate-50"
                 >
-                  <td className="px-4 py-3 text-slate-800 font-medium">
-                    {story.title}
+                  <td className="px-4 py-3 font-medium">
+                    <a
+                      href={`/?story=${story.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-600 hover:text-purple-800 hover:underline"
+                    >
+                      {story.title}
+                    </a>
                   </td>
                   <td className="px-4 py-3 text-slate-500">{story.user_email}</td>
                   <td className="px-4 py-3 text-slate-800 text-right">
