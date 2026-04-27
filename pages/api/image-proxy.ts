@@ -8,7 +8,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "Missing url param" });
   }
 
-  const target = decodeURIComponent(url);
+  // req.query.url is already decoded by Next.js — do NOT call decodeURIComponent again
+  // (double-decoding turns %20 into raw spaces, which breaks fetch())
+  const target = url;
   if (!target.startsWith("https://image.pollinations.ai/")) {
     return res.status(403).json({ error: "Only Pollinations URLs allowed" });
   }
