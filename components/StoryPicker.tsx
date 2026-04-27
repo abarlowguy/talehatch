@@ -33,11 +33,18 @@ export default function StoryPicker({ onStart, onResume, initialEmail }: Props) 
   const [showEmailForm, setShowEmailForm] = useState(false);
 
   useEffect(() => {
-    if (!initialEmail) return;
+    const emailToLoad = initialEmail ?? new URLSearchParams(window.location.search).get("email") ?? null;
+    if (!emailToLoad) return;
+    setEmail(emailToLoad);
     setLoading(true);
-    fetch(`/api/stories?email=${encodeURIComponent(initialEmail)}`)
+    fetch(`/api/stories?email=${encodeURIComponent(emailToLoad)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: StorySummary[]) => { setStories(data); setView("hub"); })
+      .then((data: StorySummary[]) => {
+        localStorage.setItem("th_email", emailToLoad);
+        window.history.replaceState(null, "", `/?email=${encodeURIComponent(emailToLoad)}`);
+        setStories(data);
+        setView("hub");
+      })
       .catch(() => setFetchError("Could not load your stories. Please try again."))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,6 +67,8 @@ export default function StoryPicker({ onStart, onResume, initialEmail }: Props) 
       const res = await fetch(`/api/stories?email=${encodeURIComponent(email.trim())}`);
       if (!res.ok) throw new Error();
       const data: StorySummary[] = await res.json();
+      localStorage.setItem("th_email", email.trim());
+      window.history.replaceState(null, "", `/?email=${encodeURIComponent(email.trim())}`);
       setStories(data);
       setView("hub");
     } catch {

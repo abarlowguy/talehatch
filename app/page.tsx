@@ -171,13 +171,17 @@ export default function Home() {
   // On mount: if URL has ?story=, restore the session from DB
   useEffect(() => {
     const urlStoryId = new URLSearchParams(window.location.search).get("story");
-    if (!urlStoryId) return;
-    const savedEmail = localStorage.getItem("th_email");
-    if (!savedEmail) return;
-    fetch(`/api/stories/${urlStoryId}?email=${encodeURIComponent(savedEmail)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data?.state) handlePickerResume(data.state); })
-      .catch(() => {});
+    if (urlStoryId) {
+      const savedEmail = localStorage.getItem("th_email");
+      if (!savedEmail) return;
+      fetch(`/api/stories/${urlStoryId}?email=${encodeURIComponent(savedEmail)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => { if (data?.state) handlePickerResume(data.state); })
+        .catch(() => {});
+      return;
+    }
+
+    // ?email= case is handled by StoryPicker's own mount effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
