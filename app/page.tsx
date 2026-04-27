@@ -158,6 +158,29 @@ export default function Home() {
     if (state.mode === "chapter") setViewingChapterIdx(null);
   }, [state.mode]);
 
+  // Sync storyId into the URL so refresh lands back in the session
+  useEffect(() => {
+    if (!state.storyId) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("story") !== state.storyId) {
+      url.searchParams.set("story", state.storyId);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, [state.storyId]);
+
+  // On mount: if URL has ?story=, restore the session from DB
+  useEffect(() => {
+    const urlStoryId = new URLSearchParams(window.location.search).get("story");
+    if (!urlStoryId) return;
+    const savedEmail = localStorage.getItem("th_email");
+    if (!savedEmail) return;
+    fetch(`/api/stories/${urlStoryId}?email=${encodeURIComponent(savedEmail)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.state) handlePickerResume(data.state); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useKeyboardScroll();
 
   // Trigger chapter generation when entering "building" mode
@@ -259,6 +282,8 @@ export default function Home() {
   // ── Handlers from StoryPicker ────────────────────────────────
 
   function handlePickerStart(email: string) {
+    localStorage.setItem("th_email", email);
+    window.history.replaceState(null, "", window.location.pathname);
     setState({
       ...INITIAL_STATE,
       storyId: null,
