@@ -1,27 +1,19 @@
 import type { AgeRange } from "@/lib/prompts";
 
-const AGE_BASE_STYLE: Record<AgeRange, string> = {
-  tiny: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
-  young: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
-  middle: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
-  older: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
+const GENRE_STYLE: Record<string, string> = {
+  fantasy: "vibrant fantasy oil painting, magical glowing light, rich jewel tones, enchanted atmosphere, epic storybook illustration, highly detailed",
+  "sci-fi": "Pixar 3D render, sleek futuristic design, neon accent lighting, metallic surfaces, cinematic depth, highly detailed",
+  mystery: "atmospheric noir illustration, deep dramatic shadows, candlelit palette, ink and wash, moody and cinematic, highly detailed",
+  adventure: "bold adventure illustration, dynamic energetic composition, vivid saturated colors, golden hour lighting, highly detailed",
+  cozy: "warm cozy picture book illustration, soft rounded shapes, pastel palette, gentle gouache, intimate hearth lighting, highly detailed",
+  historical: "detailed classical oil painting, period-accurate, aged warm tones, museum-quality composition, highly detailed",
+  other: "vibrant children's storybook illustration, expressive characters, warm inviting lighting, richly colored, highly detailed",
 };
 
-const GENRE_STYLE_MODIFIER: Record<string, string> = {
-  fantasy: "enchanted magical world, glowing runes, ethereal mist",
-  "sci-fi": "sleek metallic surfaces, neon accents, futuristic technology",
-  mystery: "moody shadows, candlelit atmosphere, noir-inspired palette",
-  adventure: "lush natural environments, dynamic action, golden hour lighting",
-  cozy: "warm hearth light, soft textures, intimate homey atmosphere",
-  historical: "period-accurate details, aged parchment tones, classical composition",
-};
-
-export function buildStyleSuffix(ageRange: AgeRange, genre: string): string {
-  const base = AGE_BASE_STYLE[ageRange];
-  const modifier = GENRE_STYLE_MODIFIER[genre.toLowerCase()] ?? "";
-  return modifier
-    ? `, ${base}, ${modifier}, highly detailed`
-    : `, ${base}, highly detailed`;
+// ageRange kept in signature for API compatibility but style is driven by genre
+export function buildStyleSuffix(_ageRange: AgeRange, genre: string): string {
+  const style = GENRE_STYLE[genre.toLowerCase()] ?? GENRE_STYLE.other;
+  return `, ${style}`;
 }
 
 export function buildRegenPrompt(userText: string, originalPrompt: string, artStyle: string): string {
