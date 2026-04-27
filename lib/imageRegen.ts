@@ -1,10 +1,10 @@
 import type { AgeRange } from "@/lib/prompts";
 
 const AGE_BASE_STYLE: Record<AgeRange, string> = {
-  tiny: "soft pastel picture book illustration, rounded shapes, gentle watercolour wash, warm and cozy",
-  young: "bright gouache illustration, bold outlines, flat colour, lively children's adventure book",
-  middle: "detailed ink and watercolour, dynamic composition, middle-grade adventure illustration",
-  older: "dramatic graphite and ink, detailed crosshatching, cinematic lighting, young adult novel illustration",
+  tiny: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
+  young: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
+  middle: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
+  older: "Pixar 3D render, bright vibrant colors, smooth rounded surfaces, expressive faces, warm studio lighting",
 };
 
 const GENRE_STYLE_MODIFIER: Record<string, string> = {
