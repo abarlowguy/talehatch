@@ -114,3 +114,47 @@ export async function updateStory(
     WHERE id = ${id}
   `;
 }
+
+export async function getAllUsers(): Promise<
+  { email: string; created_at: string; story_count: number }[]
+> {
+  const sql = getDb();
+  const rows = await sql`
+    SELECT u.email, u.created_at, COUNT(s.id)::integer AS story_count
+    FROM users u
+    LEFT JOIN stories s ON s.user_email = u.email
+    GROUP BY u.email, u.created_at
+    ORDER BY u.created_at DESC
+  `;
+  return rows as unknown as {
+    email: string;
+    created_at: string;
+    story_count: number;
+  }[];
+}
+
+export async function getAllStories(): Promise<
+  {
+    id: string;
+    user_email: string;
+    title: string;
+    chapter_count: number;
+    created_at: string;
+    updated_at: string;
+  }[]
+> {
+  const sql = getDb();
+  const rows = await sql`
+    SELECT id, user_email, title, chapter_count, created_at, updated_at
+    FROM stories
+    ORDER BY created_at DESC
+  `;
+  return rows as unknown as {
+    id: string;
+    user_email: string;
+    title: string;
+    chapter_count: number;
+    created_at: string;
+    updated_at: string;
+  }[];
+}
